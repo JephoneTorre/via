@@ -7,33 +7,62 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    const body = await req.json();
+    const userMessage: string = body?.message;
 
-    if (!message) {
+    if (!userMessage || !userMessage.trim()) {
       return NextResponse.json(
         { error: "No message provided" },
         { status: 400 }
       );
     }
 
-    // Retrieve context from knowledge base
-    const context = retrieveContext(message);
+    /* ---------------- RETRIEVE CONTEXT ---------------- */
 
-    // Build augmented prompt
-    const prompt = `
+    const context = retrieveContext(userMessage);
+
+    /* ---------------- BUILD SYSTEM PROMPT ---------------- */
+
+    let prompt: string;
+
+    // If retriever found nothing → FORCE SAFE RESPONSE
+    if (context === "STRICT_NO_CONTEXT") {
+      prompt = `
+You are a strict knowledge base assistant.
+
+The database does NOT contain information to answer the question.
+
+You MUST reply exactly:
+"I don't have information about that."
+
+Do NOT explain.
+Do NOT guess.
+Do NOT add extra words.
+`;
+    } else {
+      // Normal RAG mode
+      prompt = `
 You are a knowledge-base assistant.
 
-ONLY answer using the provided context.
-If not found, say: "I don't have information about that."
+Answer ONLY using the provided context.
 
-Context:
+Rules:
+- Do NOT invent information
+- Do NOT use outside knowledge
+- If the answer is not explicitly written in the context, reply:
+"I don't have information about that."
+- Be concise and clear
+
+CONTEXT:
 ${context}
 
-Question:
-${message}
+QUESTION:
+${userMessage}
 `;
+    }
 
-    // Ask LLM
+    /* ---------------- ASK LLM ---------------- */
+
     const reply = await askLLM(prompt);
 
     return NextResponse.json({ reply });

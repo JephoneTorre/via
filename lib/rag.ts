@@ -1,13 +1,28 @@
 import melinda from "@/app/data/melinda.json";
 import xfinite from "@/app/data/xfinite.json";
+import { rememberTopic, getLastTopic } from "./chatMemory";
 
-type KBItem = { title: string; content: string; };
+type KBItem = { title: string; content: string };
 
 const KB = [
   ...melinda.map(x => ({ ...x, source: "melinda" })),
   ...xfinite.map(x => ({ ...x, source: "xfinite" })),
 ] as (KBItem & { source: string })[];
 
+/* ---------------- STOPWORDS ---------------- */
+
+const STOPWORDS = new Set([
+  "what","is","are","the","a","an","for","to","of","in","on","at","about",
+  "do","does","did","can","could","should","would","tell","me","i","you",
+  "how","much","many","there","their","them"
+]);
+
+function cleanWords(query: string) {
+  return query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter(w => w && !STOPWORDS.has(w));
+}
 
 /* ---------------- TOPIC DETECTION ---------------- */
 
@@ -23,28 +38,26 @@ function detectTopic(query: string) {
   return "any";
 }
 
-
 /* ---------------- INTENT DETECTION ---------------- */
 
 const intents: Record<string, string[]> = {
-  requirements: ["requirement","requirements","need","needed","prerequisite","qualifications"],
-  apply: ["apply","application","join","register","enroll","start"],
-  pay: ["salary","pay","income","earn","earnings","rate","payment"],
-  hours: ["time","hours","schedule","shift","workload"],
-  training: ["training","orientation","lesson","course","tutorial"],
-  contact: ["contact","email","facebook","instagram","link"],
+  requirements: ["requirement","requirements","qualifications","specs","specifications","needed","prerequisite"],
+  apply: ["apply","application","join","register","enroll","start","signup","sign"],
+  pay: ["salary","pay","income","earn","earnings","rate","payment","compensation","wage"],
+  hours: ["time","hours","schedule","shift","duration","workload"],
+  training: ["training","orientation","lesson","course","tutorial","practice"],
+  contact: ["contact","email","facebook","instagram","link","reach"],
 };
 
 function detectIntent(query: string) {
-  const q = query.toLowerCase();
+  const words = cleanWords(query).join(" ");
 
   for (const key in intents) {
-    if (intents[key].some(w => q.includes(w)))
+    if (intents[key].some(w => words.includes(w)))
       return key;
   }
   return null;
 }
-
 
 /* ---------------- SCORING ---------------- */
 
@@ -53,46 +66,57 @@ function scoreItem(item: KBItem, query: string, intent: string | null) {
   const text = `${item.title} ${item.content}`.toLowerCase();
 
   // keyword overlap
-  for (const word of query.split(/\s+/)) {
-    if (text.includes(word)) score += 2;
+  for (const word of cleanWords(query)) {
+    if (text.includes(word)) score += 3;
   }
 
-  // intent boost
-  if (intent && text.includes(intent)) score += 6;
+  // intent semantic boost
+  if (intent) {
+    const synonyms = intents[intent];
+    if (synonyms.some(w => text.includes(w))) score += 12;
+  }
 
   // title priority
-  if (intent && item.title.toLowerCase().includes(intent)) score += 10;
+  if (intent && item.title.toLowerCase().includes(intent)) score += 15;
 
   return score;
 }
-
 
 /* ---------------- MAIN RETRIEVER ---------------- */
 
 export function retrieveContext(query: string): string {
 
-  const topic = detectTopic(query);
+  // topic + memory
+  let topic = detectTopic(query);
+
+  if (topic === "any") {
+    const memory = getLastTopic();
+    if (memory) topic = memory;
+  }
+
+  rememberTopic(topic);
+
+  // intent
   const intent = detectIntent(query);
 
-  let filtered = KB;
-
   // filter by topic
+  let filtered = KB;
   if (topic !== "any") {
     filtered = KB.filter(x => x.source === topic);
   }
 
-  // score all items
+  // ranking
   const ranked = filtered
     .map(item => ({
       item,
-      score: scoreItem(item, query.toLowerCase(), intent),
+      score: scoreItem(item, query, intent),
     }))
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
   if (!ranked.length)
-    return "No relevant knowledge found.";
+    return "STRICT_NO_CONTEXT";
 
   return ranked
     .map(x => `${x.item.title}: ${x.item.content}`)
