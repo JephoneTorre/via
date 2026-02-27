@@ -7,78 +7,52 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    /* =========================
-       1. READ REQUEST
-    ========================= */
+    const { message } = await req.json();
 
-    const body = await req.json();
-    const message: string | undefined = body?.message;
-
-    if (!message || typeof message !== "string" || !message.trim()) {
+    if (!message) {
       return NextResponse.json(
         { error: "No message provided" },
         { status: 400 }
       );
     }
 
-    const cleanMessage = message.trim();
+    /* 1️⃣ RETRIEVE */
+    const context = retrieveContext(message);
 
-
-    /* =========================
-       2. RETRIEVE CONTEXT (RAG)
-    ========================= */
-
-    const context = retrieveContext(cleanMessage);
-
-    // 🚫 HARD GUARD — prevents hallucinations completely
+    /* 2️⃣ IF NOTHING FOUND — DO NOT CALL LLM */
     if (context === "NO_CONTEXT_FOUND") {
       return NextResponse.json({
         reply: "I don't have information about that."
       });
     }
 
-
-    /* =========================
-       3. BUILD PROMPT
-    ========================= */
-
+    /* 3️⃣ BUILD STRICT RAG PROMPT */
     const prompt = `
-You are VIA, a strict knowledge-base assistant.
+You are a knowledge-base assistant.
 
 RULES:
-- Answer ONLY using the provided context
-- Do NOT use outside knowledge
-- If the answer is not clearly in the context, reply exactly:
-  "I don't have information about that."
-
-Keep answers concise and natural.
+- ONLY answer using the provided context
+- DO NOT use outside knowledge
+- DO NOT guess
+- If the answer is not inside the context, say:
+"I don't have information about that."
 
 CONTEXT:
 ${context}
 
 QUESTION:
-${cleanMessage}
+${message}
+
+ANSWER:
 `;
 
-
-    /* =========================
-       4. ASK LLM
-    ========================= */
-
+    /* 4️⃣ ASK MODEL */
     const reply = await askLLM(prompt);
 
-
-    /* =========================
-       5. RETURN RESPONSE
-    ========================= */
-
-    return NextResponse.json({
-      reply: reply || "I don't have information about that."
-    });
+    return NextResponse.json({ reply });
 
   } catch (err) {
     console.error("CHAT API ERROR:", err);
-
     return NextResponse.json(
       { error: "Server crashed" },
       { status: 500 }

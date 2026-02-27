@@ -3,157 +3,106 @@ import xfinite from "@/app/data/xfinite.json";
 
 type KBItem = { title: string; content: string; source: string };
 
-/* =========================
-   BUILD KNOWLEDGE BASE
-========================= */
-
 const KB: KBItem[] = [
   ...melinda.map(x => ({ ...x, source: "melinda" })),
   ...xfinite.map(x => ({ ...x, source: "xfinite" })),
 ];
 
 
-/* =========================
-   TEXT NORMALIZATION
-========================= */
+/* ================= TEXT NORMALIZATION ================= */
 
 function normalize(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s]/g, " ")   // remove punctuation
-    .replace(/\s+/g, " ")       // collapse spaces
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function tokenize(text: string): string[] {
-  return normalize(text).split(" ");
+  return normalize(text)
+    .split(" ")
+    .filter(w => w.length > 2);
 }
 
 
-/* =========================
-   TOPIC DETECTION
-========================= */
+/* ================= STEMMING ================= */
 
-const topicKeywords = {
-  melinda: [
-    "melinda",
-    "doctor",
-    "dr",
-    "physician",
-    "pediatrician",
-    "willingham",
-    "clinic"
-  ],
+function stem(word: string): string {
+  return word
+    .replace(/ing$|ed$|es$|s$/g, "")
+    .replace(/ment$|tion$/g, "");
+}
 
-  xfinite: [
-    "xfinite",
-    "xfnite",
-    "labeling",
-    "annotation",
-    "project",
-    "task",
-    "training",
-    "work"
-  ]
-};
 
-function detectTopic(query: string): "melinda" | "xfinite" | "any" {
-  const words = tokenize(query);
+/* ================= QUERY EXPANSION ================= */
 
-  for (const topic of Object.keys(topicKeywords) as (keyof typeof topicKeywords)[]) {
-    if (words.some(w => topicKeywords[topic].includes(w))) {
-      return topic;
+function expandQuery(words: string[]): string[] {
+  const synonyms: Record<string, string[]> = {
+    work: ["job","apply","join","start","hiring"],
+    requirements: ["requirements","qualification","need","prerequisite","require"],
+    pay: ["salary","earn","income","payment","rate"],
+    training: ["training","orientation","lesson"],
+    contact: ["contact","email","link","facebook"],
+  };
+
+  let expanded = [...words];
+
+  for (const w of words) {
+    for (const key in synonyms) {
+      if (key.startsWith(w) || w.startsWith(key)) {
+        expanded.push(...synonyms[key]);
+      }
     }
   }
 
-  return "any";
+  return [...new Set(expanded)];
 }
 
 
-/* =========================
-   INTENT DETECTION
-========================= */
+/* ================= SCORING ================= */
 
-const intents: Record<string, string[]> = {
-  requirements: ["requirement","requirements","qualifications","needed","need","prerequisite"],
-  apply: ["apply","application","join","register","enroll","start"],
-  pay: ["salary","pay","income","earn","earnings","rate","payment"],
-  hours: ["time","hours","schedule","shift","workload"],
-  training: ["training","orientation","lesson","course","tutorial"],
-  contact: ["contact","email","facebook","instagram","link"],
-};
+function scoreItem(item: KBItem, queryWords: string[]): number {
+  const textWords = tokenize(item.title + " " + item.content).map(stem);
 
-function detectIntent(query: string): string | null {
-  const words = tokenize(query);
-
-  for (const key in intents) {
-    if (words.some(w => intents[key].includes(w))) {
-      return key;
-    }
-  }
-  return null;
-}
-
-
-/* =========================
-   SCORING FUNCTION
-========================= */
-
-function scoreItem(item: KBItem, query: string, intent: string | null): number {
   let score = 0;
 
-  const qWords = tokenize(query);
-  const text = normalize(item.title + " " + item.content);
+  for (const q of queryWords) {
+    const sq = stem(q);
 
-  // keyword overlap
-  for (const word of qWords) {
-    if (text.includes(word)) score += 2;
+    for (const word of textWords) {
+      if (word === sq) score += 6;
+      else if (word.startsWith(sq)) score += 4;
+      else if (word.includes(sq)) score += 2;
+    }
   }
 
-  // intent boost
-  if (intent && text.includes(intent)) score += 6;
-
-  // title priority boost
-  if (intent && normalize(item.title).includes(intent)) score += 10;
-
-  // length normalization (prevents huge paragraphs always winning)
-  score = score / Math.sqrt(text.length);
+  const uniqueMatches = new Set(queryWords.map(stem).filter(w => textWords.includes(w)));
+  score += uniqueMatches.size * 5;
 
   return score;
 }
 
 
-/* =========================
-   MAIN RETRIEVER
-========================= */
+/* ================= RETRIEVER ================= */
 
 export function retrieveContext(query: string): string {
 
-  const topic = detectTopic(query);
-  const intent = detectIntent(query);
+  const baseWords = tokenize(query);
+  const queryWords = expandQuery(baseWords);
 
-  let filtered = KB;
-
-  // filter by detected topic
-  if (topic !== "any") {
-    filtered = KB.filter(x => x.source === topic);
-  }
-
-  // rank
-  const ranked = filtered
+  const ranked = KB
     .map(item => ({
       item,
-      score: scoreItem(item, query, intent),
+      score: scoreItem(item, queryWords),
     }))
-    .filter(x => x.score > 0.05) // threshold prevents garbage matches
+    .filter(r => r.score > 8)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 6);
 
-  if (!ranked.length) {
-    return "NO_CONTEXT_FOUND";
-  }
+  if (!ranked.length) return "NO_CONTEXT_FOUND";
 
   return ranked
-    .map(x => `${x.item.title}: ${x.item.content}`)
+    .map(r => `${r.item.title}: ${r.item.content}`)
     .join("\n");
 }
