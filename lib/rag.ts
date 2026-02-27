@@ -1,108 +1,151 @@
 import melinda from "@/app/data/melinda.json";
 import xfinite from "@/app/data/xfinite.json";
 
-type KBItem = { title: string; content: string; source: string };
+type KBItem = {
+title: string;
+content: string;
+source: string;
+};
+
+/* ---------------- BUILD KB ---------------- */
 
 const KB: KBItem[] = [
-  ...melinda.map(x => ({ ...x, source: "melinda" })),
-  ...xfinite.map(x => ({ ...x, source: "xfinite" })),
+...melinda.map(x => ({ ...x, source: "melinda" })),
+...xfinite.map(x => ({ ...x, source: "xfinite" })),
 ];
 
+/* ---------------- TEXT NORMALIZATION ---------------- */
 
-/* ================= TEXT NORMALIZATION ================= */
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function normalize(text: string) {
+return text
+.toLowerCase()
+.replace(/[^\w\s]/g, " ")
+.replace(/\s+/g, " ")
+.trim();
 }
 
-function tokenize(text: string): string[] {
-  return normalize(text)
-    .split(" ")
-    .filter(w => w.length > 2);
+function tokenize(text: string) {
+return normalize(text).split(" ");
 }
 
+/* ---------------- STOPWORDS ---------------- */
 
-/* ================= STEMMING ================= */
+const STOPWORDS = new Set([
+"what","is","are","the","a","an","do","you","know","about","tell","me",
+"can","i","how","to","of","for","in","on","at","with","and","or"
+]);
 
-function stem(word: string): string {
-  return word
-    .replace(/ing$|ed$|es$|s$/g, "")
-    .replace(/ment$|tion$/g, "");
+function meaningfulTokens(tokens: string[]) {
+return tokens.filter(t => !STOPWORDS.has(t) && t.length > 2);
 }
 
+/* ---------------- SYNONYMS ---------------- */
 
-/* ================= QUERY EXPANSION ================= */
+const SYNONYMS: Record<string,string[]> = {
+requirements: ["requirement","req","reqs","needs","needed","qualifications","prerequisite"],
+apply: ["apply","application","join","register","enroll","signup"],
+training: ["training","orientation","lesson","course","tutorial"],
+pay: ["salary","income","earnings","rate","payment"],
+hours: ["time","schedule","shift","workload"],
+};
 
-function expandQuery(words: string[]): string[] {
-  const synonyms: Record<string, string[]> = {
-    work: ["job","apply","join","start","hiring"],
-    requirements: ["requirements","qualification","need","prerequisite","require"],
-    pay: ["salary","earn","income","payment","rate"],
-    training: ["training","orientation","lesson"],
-    contact: ["contact","email","link","facebook"],
-  };
+function expandQuery(tokens: string[]) {
+const expanded = new Set(tokens);
 
-  let expanded = [...words];
-
-  for (const w of words) {
-    for (const key in synonyms) {
-      if (key.startsWith(w) || w.startsWith(key)) {
-        expanded.push(...synonyms[key]);
-      }
-    }
-  }
-
-  return [...new Set(expanded)];
+for (const token of tokens) {
+for (const key in SYNONYMS) {
+if (SYNONYMS[key].includes(token)) {
+expanded.add(key);
+}
+}
 }
 
-
-/* ================= SCORING ================= */
-
-function scoreItem(item: KBItem, queryWords: string[]): number {
-  const textWords = tokenize(item.title + " " + item.content).map(stem);
-
-  let score = 0;
-
-  for (const q of queryWords) {
-    const sq = stem(q);
-
-    for (const word of textWords) {
-      if (word === sq) score += 6;
-      else if (word.startsWith(sq)) score += 4;
-      else if (word.includes(sq)) score += 2;
-    }
-  }
-
-  const uniqueMatches = new Set(queryWords.map(stem).filter(w => textWords.includes(w)));
-  score += uniqueMatches.size * 5;
-
-  return score;
+return [...expanded];
 }
 
+/* ---------------- FUZZY MATCH ---------------- */
 
-/* ================= RETRIEVER ================= */
+function similarity(a: string, b: string) {
+if (a === b) return 1;
+if (a.includes(b) || b.includes(a)) return 0.8;
 
-export function retrieveContext(query: string): string {
+let matches = 0;
+for (let i = 0; i < Math.min(a.length, b.length); i++) {
+if (a[i] === b[i]) matches++;
+}
+return matches / Math.max(a.length, b.length);
+}
 
-  const baseWords = tokenize(query);
-  const queryWords = expandQuery(baseWords);
+/* ---------------- SCORING ---------------- */
 
-  const ranked = KB
-    .map(item => ({
-      item,
-      score: scoreItem(item, queryWords),
-    }))
-    .filter(r => r.score > 8)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
+function scoreItem(item: KBItem, queryTokens: string[]) {
+const text = normalize(item.title + " " + item.content);
+const words = text.split(" ");
 
-  if (!ranked.length) return "NO_CONTEXT_FOUND";
+let score = 0;
 
-  return ranked
-    .map(r => `${r.item.title}: ${r.item.content}`)
-    .join("\n");
+for (const q of queryTokens) {
+for (const w of words) {
+const sim = similarity(q, w);
+
+```
+  if (sim > 0.9) score += 12;      // exact
+  else if (sim > 0.75) score += 6; // fuzzy
+  else if (sim > 0.6) score += 3;  // weak
+}
+```
+
+}
+
+// title bonus
+const title = normalize(item.title);
+for (const q of queryTokens) {
+if (title.includes(q)) score += 10;
+}
+
+return score;
+}
+
+/* ---------------- MAIN RETRIEVER ---------------- */
+
+export function retrieveContext(query: string, forcedTopic?: string) {
+
+const tokens = meaningfulTokens(tokenize(query));
+const expanded = expandQuery(tokens);
+
+let candidates = KB;
+
+// if memory topic exists, prioritize it
+if (forcedTopic) {
+candidates = [
+...KB.filter(x => x.source === forcedTopic),
+...KB.filter(x => x.source !== forcedTopic),
+];
+}
+
+const ranked = candidates
+.map(item => ({
+item,
+score: scoreItem(item, expanded),
+}))
+.filter(r => r.score > 8)
+.sort((a,b)=>b.score-a.score)
+.slice(0,6);
+
+if (!ranked.length)
+return { context: "NO_CONTEXT_FOUND" };
+
+/* detect topic */
+const topicCount: Record<string, number> = {};
+for (const r of ranked) {
+topicCount[r.item.source] = (topicCount[r.item.source] || 0) + 1;
+}
+
+const detectedTopic =
+Object.entries(topicCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
+
+return {
+context: ranked.map(r => `${r.item.title}: ${r.item.content}`).join("\n"),
+detectedTopic
+};
 }
