@@ -15,37 +15,35 @@ export async function POST(req: Request) {
       req.headers.get("x-real-ip") ||
       "local";
 
-    /* 1️⃣ LOAD LAST TOPIC */
+    /* LOAD MEMORY */
     const lastTopic = getTopic(sessionId);
 
-    /* 2️⃣ RETRIEVE CONTEXT */
+    /* RETRIEVE */
     let { context, detectedTopic } = retrieveContext(message);
 
-    /* 3️⃣ IF NOTHING FOUND — TRY WITH MEMORY */
+    /* MEMORY RETRY */
     if (context === "NO_CONTEXT_FOUND" && lastTopic) {
-      const retry = retrieveContext(lastTopic + " " + message);
+      const retry = retrieveContext(lastTopic + " " + message, lastTopic);
       context = retry.context;
       detectedTopic = retry.detectedTopic || lastTopic;
     }
 
-    /* 4️⃣ STILL NOTHING */
     if (context === "NO_CONTEXT_FOUND") {
       return NextResponse.json({
         reply: "I don't have information about that."
       });
     }
 
-    /* 5️⃣ SAVE NEW TOPIC */
+    /* SAVE TOPIC */
     if (detectedTopic) setTopic(sessionId, detectedTopic);
 
-    /* 6️⃣ PROMPT */
     const prompt = `
 You are a knowledge-base assistant.
 
 RULES:
-- Only answer using the context
-- Do not guess
-- If not in context say: I don't have information about that.
+- Answer by searching from the content and title read troughout so that it you wont miss the word.
+- Never guess
+- If missing say: I don't have information about that.
 
 CONTEXT:
 ${context}
@@ -60,9 +58,6 @@ ${message}
 
   } catch (err) {
     console.error(err);
-    return NextResponse.json(
-      { error: "Server crashed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Server crashed" }, { status: 500 });
   }
 }
