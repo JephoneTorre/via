@@ -94,13 +94,13 @@ export default function Home() {
               </div>
             </div>
             <div>
-              <h1 className="font-black text-xl tracking-tighter text-neon uppercase italic">VIA_SYSTEM</h1>
-              <p className="text-[9px] text-neon/40 uppercase tracking-[0.2em] font-bold">Neural Net Protocol v1.2</p>
+              <h1 className="font-black text-xl tracking-tighter text-neon uppercase italic text-glow">LIA SATELLA</h1>
+              <p className="text-[9px] text-neon/60 uppercase tracking-[0.2em] font-bold">Chat with Lia!</p>
             </div>
           </div>
           <div className="hidden md:flex items-center gap-2">
             <div className="w-2 h-2 bg-neon rounded-full animate-pulse shadow-[0_0_8px_#39FF14]" />
-            <span className="text-[10px] text-neon/60 font-mono tracking-widest uppercase">System Online</span>
+            <span className="text-[10px] text-neon/60 font-mono tracking-widest uppercase">online</span>
           </div>
         </div>
       </div>
@@ -124,10 +124,9 @@ export default function Home() {
                   alt="VIA Logo"
                 />
               </div>
-              <h2 className="text-4xl font-black mb-4 tracking-tighter italic text-white">INITIALIZE INTERFACE</h2>
+              <h2 className="text-4xl font-black mb-4 tracking-tighter italic text-white uppercase">Initialize Interface</h2>
               <p className="text-sm max-w-sm mx-auto text-neon/40 leading-relaxed font-mono tracking-tight uppercase">
-                Accessing Xfinite database... <br/>
-                Ready for query input.
+                Awaiting connection...
               </p>
             </div>
           )}
@@ -205,7 +204,7 @@ export default function Home() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="ENTER QUERY DATA..."
+                placeholder="message here"
                 className="flex-1 bg-transparent border-none outline-none focus:ring-0 px-2 py-3 text-sm text-neon font-mono placeholder:text-neon/20 caret-neon"
               />
 
@@ -214,16 +213,13 @@ export default function Home() {
                 disabled={loading || !input.trim()}
                 className="px-8 py-3 rounded-md bg-neon text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-glow disabled:opacity-10 transition-all duration-300 active:scale-95 shadow-[0_0_20px_rgba(57,255,20,0.2)]"
               >
-                Execute
+                SEND
               </button>
             </div>
           </div>
-          <div className="flex justify-between mt-4 px-2">
-            <p className="text-[8px] text-neon/20 tracking-[0.3em] uppercase font-bold">
-              Terminal: VIA_RAG_CORE_STABLE
-            </p>
-            <p className="text-[8px] text-neon/20 tracking-[0.3em] uppercase font-bold">
-              Encryption: ACTIVE
+          <div className="flex justify-end mt-4 px-2">
+            <p className="text-[8px] text-neon/40 tracking-[0.3em] uppercase font-bold">
+              Status: ACTIVE
             </p>
           </div>
         </div>

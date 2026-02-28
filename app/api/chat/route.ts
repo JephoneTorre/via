@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     if (detectedTopic) setTopic(sessionId, detectedTopic as string);
 
     const prompt = `
-You are a helpful knowledge-base assistant for VIA.
+You are a helpful knowledge-base assistant named Lia Satella.
 
 RULES:
 - Answer the user's question using ONLY the provided CONTEXT below.
