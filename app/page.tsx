@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import ReactMarkdown from "react-markdown";
 
 // --- TYPES ---
 type Msg = {
@@ -168,8 +169,12 @@ export default function Home() {
                 {m.role === "assistant" && (
                   <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-neon/50" />
                 )}
-                <div className={`${m.role === "assistant" ? "font-mono text-[13px] tracking-tight" : "font-sans text-sm"}`}>
-                  {m.text}
+                <div className={`${m.role === "assistant" ? "font-mono text-[13px] tracking-tight markdown-content" : "font-sans text-sm"}`}>
+                  {m.role === "assistant" ? (
+                    <ReactMarkdown>{m.text}</ReactMarkdown>
+                  ) : (
+                    m.text
+                  )}
                 </div>
               </div>
             </div>
