@@ -74,7 +74,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white flex flex-col font-sans selection:bg-neon/30 selection:text-neon relative overflow-hidden">
+    <div className="h-screen bg-[#050505] text-white flex flex-col font-sans selection:bg-neon/30 selection:text-neon relative overflow-hidden">
       
       {/* SCANLINE EFFECT */}
       <div className="scanline pointer-events-none" />
