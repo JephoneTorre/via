@@ -4,8 +4,12 @@ import type { Metadata } from "next";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "RAG Chatbot",
-  description: "AI Assistant",
+  title: "VIA Assistant",
+  description: "Corporate Intelligence Unit AI Assistant",
+  icons: {
+    icon: "/icon/via_new.png",
+    apple: "/icon/via_new.png",
+  },
 };
 
 export default function RootLayout({

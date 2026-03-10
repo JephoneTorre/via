@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // --- TYPES ---
 type Msg = {
@@ -25,7 +26,7 @@ export default function Home() {
   // HYDRATE FROM CACHE ON MOUNT
   useEffect(() => {
     if (typeof window !== "undefined" && !isHydrated) {
-      const saved = sessionStorage.getItem("lia_chat_history");
+      const saved = sessionStorage.getItem("via_chat_history");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -45,7 +46,7 @@ export default function Home() {
   // SAVE TO CACHE ON CHANGE
   useEffect(() => {
     if (isHydrated && messages.length > 0) {
-      sessionStorage.setItem("lia_chat_history", JSON.stringify(messages));
+      sessionStorage.setItem("via_chat_history", JSON.stringify(messages));
     }
   }, [messages, isHydrated]);
 
@@ -61,8 +62,6 @@ export default function Home() {
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
-
-
 
   async function sendMessage() {
     if (!input.trim() || botStatus !== "idle") return;
@@ -81,57 +80,22 @@ export default function Home() {
     setMessages(prev => [...prev, newUserMsg]);
     setLastMessageSeen(false);
     
-    const now = Date.now();
-    const timeSinceLastLiaMsg = now - lastReplyAt;
-    const isLiveConversation = lastReplyAt !== 0 && timeSinceLastLiaMsg < 120000; // 2 minute "live" window
-
-    const baseWaitMin = isLiveConversation ? 3000 : 10000;
-    const baseWaitMax = isLiveConversation ? 7000 : 30000;
-    const analyzeTime = isLiveConversation ? 1500 : 4000;
-
-    // PHASE 1: BEFORE SEEN (Delivered status)
-    setBotStatus("waiting");
-    const waitTime = Math.floor(Math.random() * (baseWaitMax - baseWaitMin + 1)) + baseWaitMin;
-    await sleep(waitTime);
-    
-    // PHASE 2: SEEN NOTICE & ANALYZE
-    setLastMessageSeen(true);
     setBotStatus("analyzing");
-    
-    // Start fetching while "analyzing" to be ready
-    const apiPromise = fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: userText }),
-    });
-
-    await sleep(analyzeTime);
-    
-    setBotStatus("typing");
+    setLastMessageSeen(true);
 
     try {
-      const res = await apiPromise;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+      });
 
-      if (!res.ok) {
-        const txt = await res.text();
-        setMessages(prev => [
-          ...prev,
-          { 
-            id: Math.random().toString(36).substring(7),
-            role: "assistant", 
-            text: `❌ ERROR: Brain link severed.\n${txt}`,
-            timestamp: new Date()
-          },
-        ]);
-        setBotStatus("idle");
-        return;
-      }
+      setBotStatus("typing");
+
+      if (!res.ok) throw new Error("Connection failed");
 
       const data = await res.json();
-      const reply = data.reply ?? `❌ ERROR: Memory corruption.`;
-
-      const typingTime = Math.min(reply.length * 15, 2000); 
-      await sleep(typingTime);
+      const reply = data.reply ?? "I encountered an error processing your request.";
 
       setMessages(prev => [...prev, { 
         id: Math.random().toString(36).substring(7),
@@ -141,14 +105,13 @@ export default function Home() {
       }]);
       setLastReplyAt(Date.now());
 
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+    } catch (err) {
       setMessages(prev => [
         ...prev,
         { 
           id: Math.random().toString(36).substring(7),
           role: "assistant", 
-          text: "❌ Connection error: " + errorMessage,
+          text: "I'm having trouble connecting to the system. Please try again in a moment.",
           timestamp: new Date()
         },
       ]);
@@ -162,122 +125,130 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen bg-[#050505] text-white flex flex-col font-sans selection:bg-neon/30 relative overflow-hidden">
-      
-      {/* SCANLINE EFFECT */}
-      <div className="scanline pointer-events-none opacity-20" />
+    <div className="h-screen flex flex-col selection:bg-primary/30 relative">
       
       {/* HEADER */}
-      <div className="sticky top-0 z-20 border-b border-white/5 backdrop-blur-md bg-black/80">
-        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-full overflow-hidden border border-white/10 shadow-lg">
+      <header className="sticky top-4 z-30 mx-auto w-[95%] max-w-5xl">
+        <div className="glass-panel rounded-full px-6 py-3 flex items-center justify-between shadow-lg border-white/50">
+          <div className="flex items-center gap-4">
+            <div className="relative h-8 w-32">
               <Image 
-                src="/icon/via.png" 
-                alt="VIA Icon" 
+                src="/icon/vip.png" 
+                alt="VIP Logo" 
                 fill
-                className="object-cover"
+                className="object-contain"
               />
             </div>
-            <div>
-              <h1 className="text-lg tracking-tight text-white">Lia Satella</h1>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 bg-neon rounded-full shadow-[0_0_8px_#39ff14]" />
-                <span className="text-[10px] text-white/50 font-normal tracking-wider">Active now</span>
-              </div>
+
+          </div>
+          
+          <div className="hidden md:flex items-center gap-3">
+            <div className="bg-slate-50 px-4 py-1.5 rounded-full text-[10px] text-slate-400 uppercase tracking-wider font-bold border border-slate-100">
+              Secure Protocol Active
             </div>
           </div>
-
         </div>
-      </div>
+      </header>
 
       {/* CHAT AREA */}
-      <div className="flex-1 overflow-y-auto scroll-smooth relative px-4 md:px-0">
-        {/* Subtle background grid */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(57,255,20,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(57,255,20,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none" />
-        
-        <div className="max-w-3xl mx-auto py-8 relative z-10">
+      <main className="flex-1 overflow-y-auto scroll-smooth relative">
+        <div className="max-w-3xl mx-auto py-12 px-6 relative z-10">
 
           {messages.length === 0 && (
-            <div className="text-center pt-20 flex flex-col items-center">
-              <div className="relative w-24 h-24 mb-6 rounded-full overflow-hidden border-2 border-white/10 shadow-2xl">
-                <Image 
-                  src="/icon/via.png" 
-                  fill
-                  className="object-cover"
-                  alt="VIA Logo"
-                />
+            <div className="text-center pt-24 space-y-10 animate-float">
+              <div className="inline-flex items-center gap-6 px-10 py-4 rounded-full border border-slate-200 bg-white shadow-md mb-8">
+                <div className="relative w-24 h-12">
+                  <Image 
+                    src="/icon/vip.png" 
+                    alt="VIP" 
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+                <div className="w-[1px] h-8 bg-slate-200" />
+                <span className="text-xl uppercase tracking-[0.4em] font-black text-slate-500">VIA</span>
               </div>
-              <h2 className="text-2xl mb-1 text-white">Lia Satella</h2>
-              <p className="text-sm text-white/40 mb-8 uppercase tracking-widest text-[10px]">Xfinite Team Manager</p>
-              <div className="bg-white/5 rounded-2xl p-6 border border-white/10 max-w-xs">
-                <p className="text-xs text-white/60 leading-relaxed italic">
-                  &quot;I&apos;m here to help you with your Xfinite journey po! Tanong lang kayo anytime.&quot;
+              <div className="space-y-4">
+                <h2 className="text-5xl md:text-6xl font-display font-black tracking-tight text-slate-900">
+                  We craft <span className="text-primary italic">intelligence</span> <br />
+                  and digital strategy
+                </h2>
+                <p className="max-w-lg mx-auto text-slate-500 text-sm font-medium leading-relaxed">
+                  I am VIA, your specialized company assistant. I provide detailed insights about operations, internal protocols, and strategic digital activations.
                 </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto pt-8">
+                {["Client Portfolio Details", "Company Policy Search", "Project Status Updates", "Departmental Contacts"].map((prompt) => (
+                  <button 
+                    key={prompt}
+                    onClick={() => setInput(prompt)}
+                    className="glass-card hover:bg-white text-left p-5 rounded-[2rem] text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/30 transition-all border-slate-100 shadow-sm flex items-center justify-between group"
+                  >
+                    {prompt}
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-primary">→</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          <div className="space-y-6">
+          <div className="space-y-8">
             {messages.map((m, i) => {
               const isLastUserMsg = m.role === "user" && i === messages.length - 1;
-              const isLastInGroup = i === messages.length - 1 || messages[i + 1].role !== m.role;
 
               return (
                 <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                   
-                  {/* DATE SEPARATOR (Mock logic) */}
-                  {(i === 0 || m.timestamp.getDate() !== messages[i-1].timestamp.getDate()) && (
-                    <div className="w-full text-center my-6">
-                      <span className="text-[10px] text-white/30 uppercase tracking-[0.2em]">
-                        {m.timestamp.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className={`flex items-end gap-2 max-w-[85%] ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  <div className={`flex items-start gap-4 max-w-[90%] md:max-w-[80%] ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                     
-                    {/* AVATAR FOR ASSISTANT */}
                     {m.role === "assistant" && (
-                      <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-white/10 mb-1">
-                        <Image src="/icon/via.png" alt="Lia" width={28} height={28} className="object-cover" />
+                      <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-white border border-slate-100 mt-1 flex items-center justify-center p-2">
+                        <Image src="/icon/vip - Copy.png" alt="VIA" width={40} height={40} className="object-contain" />
                       </div>
                     )}
 
                     <div className="flex flex-col">
                       <div
-                        className={`px-4 py-2.5 rounded-2xl text-[14px] leading-relaxed shadow-sm
+                        className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed shadow-sm
                         ${
                           m.role === "user"
-                            ? "bg-neon text-black rounded-tr-sm"
-                            : "bg-[#262626] text-white/90 rounded-tl-sm"
+                            ? "message-user text-white rounded-tr-sm"
+                            : "message-assistant text-slate-800 rounded-tl-sm bg-white border border-slate-100 font-medium"
                         }`}
                       >
-                        {m.role === "assistant" ? <div className="prose prose-invert prose-sm"><ReactMarkdown>{m.text}</ReactMarkdown></div> : m.text}
+                        {m.role === "assistant" ? 
+                          <div className="prose prose-sm max-w-none markdown-content font-sans">
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({ ...props }) => (
+                                  <a 
+                                    {...props} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-primary hover:underline font-bold"
+                                  />
+                                )
+                              }}
+                            >
+                              {m.text}
+                            </ReactMarkdown>
+                          </div> : 
+                          <span>{m.text}</span>
+                        }
                       </div>
                       
-                      {/* TIMESTAMP UNDER MESSAGE (Only if last in group or shows after 5 mins) */}
-                      {isLastInGroup && (
-                        <span className={`text-[9px] text-white/30 mt-1 ${m.role === "user" ? "text-right" : "text-left ml-1"}`}>
-                          {formatTime(m.timestamp)}
-                        </span>
-                      )}
+                      <span className={`text-[9px] text-slate-400 mt-1 font-bold tracking-widest uppercase ${m.role === "user" ? "text-right" : "text-left"}`}>
+                        {formatTime(m.timestamp)}
+                      </span>
                     </div>
                   </div>
-  {/* MESSENGER STYLE STATUS INDICATORS */}
-                  {/* MESSENGER STYLE STATUS INDICATORS */}
+
                   {isLastUserMsg && (
-                    <div className="mt-1 mr-1 flex flex-col items-end">
-                      {lastMessageSeen ? (
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="w-3.5 h-3.5 rounded-full overflow-hidden border border-white/20 shadow-sm opacity-80">
-                            <Image src="/icon/via.png" alt="Seen" width={14} height={14} className="object-cover" />
-                          </div>
-                          <span className="text-[9px] text-white/30 font-normal">Seen {formatTime(new Date())}</span>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-white/40 font-normal tracking-tight">Delivered</span>
-                      )}
+                    <div className="mt-2 flex flex-col items-end px-2">
+                       <span className="text-[10px] text-primary/60 font-semibold tracking-widest uppercase">
+                          {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.toUpperCase()) : "Transmitting"}
+                       </span>
                     </div>
                   )}
                 </div>
@@ -285,55 +256,54 @@ export default function Home() {
             })}
 
             {botStatus === "typing" && (
-              <div className="flex items-end gap-2">
-                <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-white/10 mb-1">
-                  <Image src="/icon/via.png" alt="Lia" width={28} height={28} className="object-cover" />
+              <div className="flex items-start gap-4 animate-pulse">
+                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-white border border-slate-100 flex items-center justify-center p-2">
+                  <Image src="/icon/vip - Copy.png" alt="VIA" width={40} height={40} className="object-contain" />
                 </div>
-                <div className="bg-[#262626] rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1 items-center">
-                  <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" />
-                  <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.4s]" />
+                <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
+                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />
+                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_var(--primary-glow)]" />
+                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_var(--primary-glow)]" />
                 </div>
               </div>
             )}
           </div>
 
-          <div ref={bottomRef} className="h-10" />
+          <div ref={bottomRef} className="h-20" />
         </div>
-      </div>
+      </main>
 
-      {/* INPUT AREA (Messenger Style) */}
-      <div className="p-4 bg-black border-t border-white/5">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          
-          {/* PILL INPUT */}
-          <div className="flex-1 relative flex items-center">
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Chat with me"
-              className="w-full bg-[#262626] text-white rounded-full py-2.5 px-6 outline-none border-none text-[15px] placeholder:text-white/30"
-            />
-          </div>
-
-          {/* SEND ICON (AIRPLANE NEON) */}
+      {/* INPUT AREA */}
+      <footer className="p-8 relative">
+        <div className="max-w-4xl mx-auto flex items-center gap-4 bg-white p-2 rounded-full border border-slate-200 shadow-xl">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Type your strategic inquiry here..."
+            className="flex-1 bg-transparent text-slate-900 py-3 px-8 outline-none border-none text-[15px] placeholder:text-slate-300 font-semibold"
+          />
           <button
             onClick={sendMessage}
             disabled={botStatus !== "idle" || !input.trim()}
-            className={`transition-all duration-200 ${botStatus !== "idle" || !input.trim() ? "opacity-20 translate-x-1" : "text-neon hover:scale-110 active:scale-95 translate-x-0"}`}
+            className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-black text-sm uppercase tracking-widest transition-all duration-300 shadow-md ${
+              botStatus !== "idle" || !input.trim() 
+              ? "bg-slate-50 text-slate-200 cursor-not-allowed" 
+              : "bg-primary text-white hover:bg-primary/90 hover:scale-[1.02] active:scale-95 shadow-primary/20"
+            }`}
           >
-            <svg 
-              className="w-7 h-7 transform rotate-12" 
-              fill="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            Send
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>
         </div>
-      </div>
-
+        <div className="max-w-4xl mx-auto mt-4">
+          <p className="text-[9px] text-center text-slate-400 uppercase tracking-[0.3em] font-black">
+            VIA &copy; 2026 VIP scale
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -1,106 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap');
+
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #ffffff;
-  --neon-green: #39ff14;
-  --glow-green: #6cff3d;
-  --dark-green: #1f7a3f;
+  --background: #ffffff;
+  --foreground: #1e293b;
+  --primary: #db2777; /* Deep Pink */
+  --primary-glow: rgba(219, 39, 119, 0.2);
+  --accent: #f472b6; /* Light Pink */
+  --card-bg: rgba(255, 255, 255, 0.7);
+  --border: rgba(0, 0, 0, 0.05);
+  --glass: rgba(255, 255, 255, 0.85);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-neon: var(--neon-green);
-  --color-glow: var(--glow-green);
-  --color-neon-dark: var(--dark-green);
-  --font-sans: "Inter", var(--font-geist-sans), sans-serif;
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: 
+    url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10 L45 45 M55 55 L90 90 M90 10 L55 45 M45 55 L10 90' stroke='rgba(219, 39, 119, 0.25)' stroke-width='2' fill='none'/%3E%3Ccircle cx='10' cy='10' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='90' cy='90' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='90' cy='10' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='10' cy='90' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='50' cy='50' r='4' fill='rgba(59, 130, 246, 0.4)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
   color: var(--foreground);
   font-family: var(--font-sans);
+  min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
 }
 
-/* Force normal font weight overall */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-strong,
-b,
-.font-bold,
-.font-semibold,
-.font-medium {
-  font-weight: 400 !important;
-}
-
-/* Cyberpunk Scanline Effect */
-.scanline {
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: 100px;
-  z-index: 10;
-  background: linear-gradient(
-    0deg,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(57, 255, 20, 0.05) 50%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  opacity: 0.1;
-  position: absolute;
-  bottom: 100%;
-  animation: scanline 8s linear infinite;
+  height: 100%;
+  background: 
+    radial-gradient(1200px circle at 100% 100%, rgba(244, 114, 182, 0.4), transparent),
+    radial-gradient(1000px circle at 0% 0%, rgba(59, 130, 246, 0.3), transparent);
+  z-index: -1;
+  pointer-events: none;
 }
 
-@keyframes scanline {
-  0% {
-    bottom: 100%;
-  }
-  100% {
-    bottom: -100px;
-  }
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
 }
 
-.neon-border {
-  border: 1px solid var(--neon-green);
-  box-shadow:
-    0 0 10px rgba(57, 255, 20, 0.3),
-    inset 0 0 5px rgba(57, 255, 20, 0.2);
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.neon-text {
-  color: var(--neon-green);
-  text-shadow: 0 0 7px rgba(57, 255, 20, 0.5);
+.glass-card:hover {
+  border-color: var(--primary-glow);
+  box-shadow: 0 12px 40px rgba(219, 39, 119, 0.08);
+  transform: translateY(-2px);
+}
+
+/* Typography Enhancements */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #1e1b4b;
+}
+
+/* Animation */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Chat Bubbles */
+.message-user {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 8px 20px rgba(219, 39, 119, 0.2);
+}
+
+.message-assistant {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
 }
 
 /* Markdown Styling */
+.markdown-content {
+  line-height: 1.6;
+  color: #334155;
+}
+
 .markdown-content strong {
-  color: #ffffff;
-  font-weight: 400;
-  text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.markdown-content code {
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9em;
+  color: var(--primary);
 }
 
 .markdown-content p {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
-.markdown-content ul,
-.markdown-content ol {
-  margin-bottom: 1rem;
-  padding-left: 1.5rem;
-}
 
-.markdown-content li {
-  margin-bottom: 0.5rem;
-  list-style-type: decimal-leading-zero;
-}
-
-.markdown-content li::marker {
-  color: var(--neon-green);
-  font-weight: normal;
-}

@@ -1,0 +1,212 @@
+{
+  "active_clients": [
+    {
+      "name": "Amy Johnston",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901810985268",
+      "project": "WCNS Career Accelerator",
+      "email": "amy@merrickmed.com"
+    },
+    {
+      "name": "Caryn Meininger",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901800881001",
+      "kyc": "https://docs.google.com/spreadsheets/d/1p9jdEnhOyAJJ_0gH7mO8JFoq0HU5iG3oSqbiGeeE8PU/edit",
+      "email": "carynlida@gmail.com"
+    },
+    {
+      "name": "Cedrick Sabrine | Personal",
+      "status": "Active",
+      "tracking_method": "Clockify"
+    },
+    {
+      "name": "Chad Gibson",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "900801324078",
+      "kyc": "https://docs.google.com/spreadsheets/d/19CNAop3nhrisDoHSOJOf4ssmwa8KfkqY9BWf12cxtn4/edit",
+      "emails": ["chadgibson@me.com", "chad@chadgibson.com"]
+    },
+    {
+      "name": "Charmaine Schembri",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901805814084",
+      "projects": ["Lash Industry", "Coffee Machine Emporium"]
+    },
+    {
+      "name": "Danielle French",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901810038527",
+      "email": "hello@danniefrench.com.au"
+    },
+    {
+      "name": "Dr. Gretchen Hawley",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "900802201734",
+      "project": "MSing Link Online Wellness Program"
+    },
+    {
+      "name": "Dr. Kennette Thigpen",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "900801438529",
+      "email": "drkennette@welltrustpartners.com"
+    },
+    {
+      "name": "Dr. Nicola Ducharme",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "900801356268",
+      "project": "Restor Medicine"
+    },
+    {
+      "name": "Duncan Campbell",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901806101545",
+      "project": "Island Equity Systems"
+    },
+    {
+      "name": "Gabi – Katharina Espinoza",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901805393698"
+    },
+    {
+      "name": "Gianni Logan",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901803087677"
+    },
+    {
+      "name": "Jennifer Maldonado",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901808405534"
+    },
+    {
+      "name": "Karen Sole",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901808939546"
+    },
+    {
+      "name": "Katharina Espinoza",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "900801356186"
+    },
+    {
+      "name": "Katy Poole",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901810038657"
+    },
+    {
+      "name": "Kayla Zigic",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901807758701"
+    },
+    {
+      "name": "Kelly Langford",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901810122110"
+    },
+    {
+      "name": "Lori Kennedy",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901811475207"
+    },
+    {
+      "name": "Marina Alex",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901802503439"
+    },
+    {
+      "name": "Matthew Jordan Smith",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901810038510"
+    },
+    {
+      "name": "Melinda Willingham",
+      "status": "Active",
+      "tracking_method": "Upwork",
+      "clickup_id": "901806050805"
+    },
+    {
+      "name": "Snaply",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901812037415"
+    },
+    {
+      "name": "Stacey Louie",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901807980486"
+    },
+    {
+      "name": "Theresa Barnabei",
+      "status": "Active",
+      "tracking_method": "Clockify",
+      "clickup_id": "901807025324"
+    },
+    {
+      "name": "VIP Scale",
+      "status": "Active",
+      "tracking_method": "No Need to Track",
+      "clickup_id": "901805955289"
+    },
+    {
+      "name": "Xfnite",
+      "status": "Active",
+      "tracking_method": "Clockify"
+    },
+    {
+      "name": "Susan Rusalen",
+      "status": "Active",
+      "tracking_method": "Clockify"
+    }
+  ],
+  "paused_clients": [
+    { "name": "Asher – Somatics Institute for Women", "tracking_method": "Upwork" },
+    { "name": "BILT", "tracking_method": "Clockify" },
+    { "name": "Edana", "tracking_method": "Clockify" },
+    { "name": "Graham White", "tracking_method": "Upwork" },
+    { "name": "John Whale", "tracking_method": "Upwork" },
+    { "name": "Katie Kirsopp – Life Whispering", "tracking_method": "Clockify" },
+    { "name": "Skai – Esteban", "tracking_method": "Upwork" },
+    { "name": "Lilo", "tracking_method": "No Need to Track" },
+    { "name": "S‑Tier Property Group", "tracking_method": "No Need to Track" }
+  ],
+  "stopped_clients": [
+    { "name": "Anna Ball", "tracking_method": "Clockify" },
+    { "name": "Antonio Diaz", "tracking_method": "Timeproof" },
+    { "name": "Bonnie Bliss", "tracking_method": "Upwork" },
+    { "name": "Carlo Chincarini", "tracking_method": "Upwork" },
+    { "name": "Dovydas – Griffin Underwood", "tracking_method": "Clockify" },
+    { "name": "Holly Allen", "tracking_method": "Clockify" },
+    { "name": "Jacqueline & Greg", "tracking_method": "Clockify" },
+    { "name": "Jennifer Love", "tracking_method": "Clockify" },
+    { "name": "Jennifer Richardson – 123 Financial Group", "tracking_method": "Clockify" },
+    { "name": "Lili Lack", "tracking_method": "Clockify" },
+    { "name": "Mary‑Anne Gillespie", "tracking_method": "Clockify" },
+    { "name": "Maxine & Roxanne – The Virtual Studio", "tracking_method": "Upwork" },
+    { "name": "Michelle Fernandez", "tracking_method": "Toggle" },
+    { "name": "Miles V.", "tracking_method": "Clockify" },
+    { "name": "Sabrina Seidman – SEIDS", "tracking_method": "Timeproof" },
+    { "name": "Stephanie Worrell", "tracking_method": "Upwork" },
+    { "name": "Wenche Beard – Living Yoga Community", "tracking_method": "Clockify" },
+    { "name": "Eddie", "tracking_method": "Clockify" }
+  ]
+}

@@ -1,4 +1,4 @@
-import xfinite from "@/app/data/xfinite.json";
+import dataset from "@/app/data/dataset.json";
 
 type KBItem = {
   title: string;
@@ -9,7 +9,21 @@ type KBItem = {
 /* ================= BUILD KB ================= */
 
 const KB: KBItem[] = [
-  ...xfinite.map(x => ({ ...x, source: "xfinite" })),
+  ...dataset.active_clients.map(c => ({
+    title: `Active Client: ${c.name}`,
+    content: `Status: Active. Tracking: ${c.tracking_method}. ClickUp: ${c.clickup_id || "N/A"}. Project: ${c.project || "N/A"}. Email: ${c.email || (c.emails ? c.emails.join(", ") : "N/A")}. KYC: ${c.kyc || "N/A"}.`,
+    source: "clients"
+  })),
+  ...dataset.paused_clients.map(c => ({
+    title: `Paused Client: ${c.name}`,
+    content: `Status: Paused. Tracking: ${c.tracking_method}.`,
+    source: "clients"
+  })),
+  ...dataset.stopped_clients.map(c => ({
+    title: `Stopped Client: ${c.name}`,
+    content: `Status: Stopped. Tracking: ${c.tracking_method}.`,
+    source: "clients"
+  })),
 ];
 
 const MEANING: Record<string,string[]> = {
