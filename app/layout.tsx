@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   title: "VIA Assistant",
   description: "Corporate Intelligence Unit AI Assistant",
   icons: {
-    icon: "/icon/via_new.png",
-    apple: "/icon/via_new.png",
+    icon: "/icon/vip.png",
+    apple: "/icon/vip.png",
   },
 };
 

@@ -277,7 +277,7 @@ export default function Home() {
                     
                     {m.role === "assistant" && (
                       <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-white/10 shadow-lg">
-                        <Image src="/icon/via_new.png" alt="VIA" width={32} height={32} className="object-cover scale-125" />
+                        <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-cover scale-125" />
                       </div>
                     )}
 
