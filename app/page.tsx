@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 // --- TYPES ---
 type Msg = {
@@ -80,22 +79,35 @@ export default function Home() {
     setMessages(prev => [...prev, newUserMsg]);
     setLastMessageSeen(false);
     
-    setBotStatus("analyzing");
+    const now = Date.now();
+    const timeSinceLastReply = now - lastReplyAt;
+    const isLiveConversation = lastReplyAt !== 0 && timeSinceLastReply < 120000; 
+
+    const analyzeTime = isLiveConversation ? 1000 : 2500;
+
+    setBotStatus("waiting");
+    await sleep(isLiveConversation ? 1000 : 2000);
+    
     setLastMessageSeen(true);
+    setBotStatus("analyzing");
+    
+    const apiPromise = fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userText }),
+    });
+
+    await sleep(analyzeTime);
+    setBotStatus("typing");
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
-      });
-
-      setBotStatus("typing");
-
+      const res = await apiPromise;
       if (!res.ok) throw new Error("Connection failed");
 
       const data = await res.json();
       const reply = data.reply ?? "I encountered an error processing your request.";
+
+      await sleep(Math.min(reply.length * 10, 1500));
 
       setMessages(prev => [...prev, { 
         id: Math.random().toString(36).substring(7),
@@ -202,8 +214,8 @@ export default function Home() {
                   <div className={`flex items-start gap-4 max-w-[90%] md:max-w-[80%] ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                     
                     {m.role === "assistant" && (
-                      <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-white border border-slate-100 mt-1 flex items-center justify-center p-2">
-                        <Image src="/icon/vip - Copy.png" alt="VIA" width={40} height={40} className="object-contain" />
+                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-white/10 shadow-lg">
+                        <Image src="/icon/via_new.png" alt="VIA" width={32} height={32} className="object-cover scale-125" />
                       </div>
                     )}
 
@@ -218,27 +230,13 @@ export default function Home() {
                       >
                         {m.role === "assistant" ? 
                           <div className="prose prose-sm max-w-none markdown-content font-sans">
-                            <ReactMarkdown 
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                a: ({ ...props }) => (
-                                  <a 
-                                    {...props} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="text-primary hover:underline font-bold"
-                                  />
-                                )
-                              }}
-                            >
-                              {m.text}
-                            </ReactMarkdown>
+                            <ReactMarkdown>{m.text}</ReactMarkdown>
                           </div> : 
                           <span>{m.text}</span>
                         }
                       </div>
                       
-                      <span className={`text-[9px] text-slate-400 mt-1 font-bold tracking-widest uppercase ${m.role === "user" ? "text-right" : "text-left"}`}>
+                      <span className={`text-[9px] text-slate-400 mt-2 font-bold tracking-widest uppercase px-2 ${m.role === "user" ? "text-right" : "text-left shadow-sm"}`}>
                         {formatTime(m.timestamp)}
                       </span>
                     </div>
@@ -257,8 +255,8 @@ export default function Home() {
 
             {botStatus === "typing" && (
               <div className="flex items-start gap-4 animate-pulse">
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-white border border-slate-100 flex items-center justify-center p-2">
-                  <Image src="/icon/vip - Copy.png" alt="VIA" width={40} height={40} className="object-contain" />
+                <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card border border-white/10">
+                  <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain scale-125" />
                 </div>
                 <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />

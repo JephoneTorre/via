@@ -25,8 +25,8 @@
 body {
   background-color: var(--background);
   background-image: 
-    url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10 L45 45 M55 55 L90 90 M90 10 L55 45 M45 55 L10 90' stroke='rgba(219, 39, 119, 0.25)' stroke-width='2' fill='none'/%3E%3Ccircle cx='10' cy='10' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='90' cy='90' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='90' cy='10' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='10' cy='90' r='3' fill='rgba(219, 39, 119, 0.4)'/%3E%3Ccircle cx='50' cy='50' r='4' fill='rgba(59, 130, 246, 0.4)'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
+    url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10 L90 90 M90 10 L10 90' stroke='rgba(219, 39, 119, 0.016)' stroke-width='0.5' fill='none'/%3E%3Ccircle cx='10' cy='10' r='1.2' fill='rgba(219, 39, 119, 0.04)'/%3E%3Ccircle cx='90' cy='90' r='1.2' fill='rgba(219, 39, 119, 0.04)'/%3E%3Ccircle cx='90' cy='10' r='1.2' fill='rgba(219, 39, 119, 0.04)'/%3E%3Ccircle cx='10' cy='90' r='1.2' fill='rgba(219, 39, 119, 0.04)'/%3E%3C/svg%3E");
+  background-size: 28px 28px;
   color: var(--foreground);
   font-family: var(--font-sans);
   min-height: 100vh;
@@ -42,8 +42,8 @@ body::before {
   width: 100%;
   height: 100%;
   background: 
-    radial-gradient(1200px circle at 100% 100%, rgba(244, 114, 182, 0.4), transparent),
-    radial-gradient(1000px circle at 0% 0%, rgba(59, 130, 246, 0.3), transparent);
+    radial-gradient(1000px circle at 100% 100%, rgba(244, 114, 182, 0.03), transparent),
+    radial-gradient(800px circle at 0% 0%, rgba(59, 130, 246, 0.016), transparent);
   z-index: -1;
   pointer-events: none;
 }
