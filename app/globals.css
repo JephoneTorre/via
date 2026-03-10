@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050505;
+  --foreground: #ffffff;
+  --neon-green: #39ff14;
+  --glow-green: #6cff3d;
+  --dark-green: #1f7a3f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-neon: var(--neon-green);
+  --color-glow: var(--glow-green);
+  --color-neon-dark: var(--dark-green);
+  --font-sans: "Inter", var(--font-geist-sans), sans-serif;
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Force normal font weight overall */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong,
+b,
+.font-bold,
+.font-semibold,
+.font-medium {
+  font-weight: 400 !important;
+}
+
+/* Cyberpunk Scanline Effect */
+.scanline {
+  width: 100%;
+  height: 100px;
+  z-index: 10;
+  background: linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(57, 255, 20, 0.05) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  opacity: 0.1;
+  position: absolute;
+  bottom: 100%;
+  animation: scanline 8s linear infinite;
+}
+
+@keyframes scanline {
+  0% {
+    bottom: 100%;
+  }
+  100% {
+    bottom: -100px;
+  }
+}
+
+.neon-border {
+  border: 1px solid var(--neon-green);
+  box-shadow:
+    0 0 10px rgba(57, 255, 20, 0.3),
+    inset 0 0 5px rgba(57, 255, 20, 0.2);
+}
+
+.neon-text {
+  color: var(--neon-green);
+  text-shadow: 0 0 7px rgba(57, 255, 20, 0.5);
+}
+
+/* Markdown Styling */
+.markdown-content strong {
+  color: #ffffff;
+  font-weight: 400;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+}
+
+.markdown-content p {
+  margin-bottom: 1rem;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.markdown-content li {
+  margin-bottom: 0.5rem;
+  list-style-type: decimal-leading-zero;
+}
+
+.markdown-content li::marker {
+  color: var(--neon-green);
+  font-weight: normal;
+}
