@@ -21,6 +21,7 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // HYDRATE FROM CACHE ON MOUNT
   useEffect(() => {
@@ -55,6 +56,82 @@ export default function Home() {
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, botStatus]);
+
+  // BACKGROUND ANIMATION
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let particles: { x: number; y: number; vx: number; vy: number; size: number }[] = [];
+    const particleCount = 100;
+    const connectionRadius = 150;
+    let mouse = { x: -1000, y: -1000 };
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    window.addEventListener("resize", resize);
+    resize();
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        size: Math.random() * 1.5 + 1
+      });
+    }
+
+    const onMouseMove = (e: MouseEvent) => { mouse = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("mousemove", onMouseMove);
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(219, 39, 119, 0.15)";
+      ctx.strokeStyle = "rgba(219, 39, 119, 0.08)";
+
+      particles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+        const dxMouse = mouse.x - p.x;
+        const dyMouse = mouse.y - p.y;
+        const distMouse = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
+        if (distMouse < 200) {
+          p.x -= dxMouse * 0.015;
+          p.y -= dyMouse * 0.015;
+        }
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < connectionRadius) {
+            ctx.lineWidth = 1 - dist / connectionRadius;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      });
+      requestAnimationFrame(animate);
+    };
+    animate();
+    return () => {
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("mousemove", onMouseMove);
+    };
+  }, []);
 
   const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -137,7 +214,13 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen flex flex-col selection:bg-primary/30 relative">
+    <div className="h-screen flex flex-col selection:bg-primary/30 relative overflow-hidden">
+      {/* ANIMATED BACKGROUND */}
+      <canvas 
+        ref={canvasRef} 
+        className="fixed top-0 left-0 w-full h-full pointer-events-none z-[-1]"
+        style={{ opacity: 0.6 }}
+      />
       
       {/* HEADER */}
       <header className="sticky top-4 z-30 mx-auto w-[95%] max-w-5xl">
