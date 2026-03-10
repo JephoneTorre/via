@@ -17,7 +17,6 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [botStatus, setBotStatus] = useState<"idle" | "waiting" | "seen" | "analyzing" | "typing">("idle");
   const [lastMessageSeen, setLastMessageSeen] = useState(false);
-  const [lastReplyAt, setLastReplyAt] = useState<number>(0);
   const [isHydrated, setIsHydrated] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -64,7 +63,7 @@ export default function Home() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let particles: { x: number; y: number; vx: number; vy: number; size: number }[] = [];
+    const particles: { x: number; y: number; vx: number; vy: number; size: number }[] = [];
     const particleCount = 100;
     const connectionRadius = 150;
     let mouse = { x: -1000, y: -1000 };
@@ -133,8 +132,6 @@ export default function Home() {
     };
   }, []);
 
-  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
-
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -154,37 +151,20 @@ export default function Home() {
     };
 
     setMessages(prev => [...prev, newUserMsg]);
-    setLastMessageSeen(false);
-    
-    const now = Date.now();
-    const timeSinceLastReply = now - lastReplyAt;
-    const isLiveConversation = lastReplyAt !== 0 && timeSinceLastReply < 120000; 
-
-    const analyzeTime = isLiveConversation ? 1000 : 2500;
-
-    setBotStatus("waiting");
-    await sleep(isLiveConversation ? 1000 : 2000);
-    
     setLastMessageSeen(true);
-    setBotStatus("analyzing");
-    
-    const apiPromise = fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: userText }),
-    });
-
-    await sleep(analyzeTime);
     setBotStatus("typing");
-
+    
     try {
-      const res = await apiPromise;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+      });
+
       if (!res.ok) throw new Error("Connection failed");
 
       const data = await res.json();
       const reply = data.reply ?? "I encountered an error processing your request.";
-
-      await sleep(Math.min(reply.length * 10, 1500));
 
       setMessages(prev => [...prev, { 
         id: Math.random().toString(36).substring(7),
@@ -192,9 +172,8 @@ export default function Home() {
         text: reply,
         timestamp: new Date()
       }]);
-      setLastReplyAt(Date.now());
 
-    } catch (err) {
+    } catch {
       setMessages(prev => [
         ...prev,
         { 
@@ -304,7 +283,7 @@ export default function Home() {
 
                     <div className="flex flex-col">
                       <div
-                        className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed shadow-sm
+                        className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed
                         ${
                           m.role === "user"
                             ? "message-user text-white rounded-tr-sm"
@@ -319,7 +298,7 @@ export default function Home() {
                         }
                       </div>
                       
-                      <span className={`text-[9px] text-slate-400 mt-2 font-bold tracking-widest uppercase px-2 ${m.role === "user" ? "text-right" : "text-left shadow-sm"}`}>
+                      <span className={`text-[9px] text-slate-400 mt-2 font-bold tracking-widest uppercase px-2 ${m.role === "user" ? "text-right" : "text-left"}`}>
                         {formatTime(m.timestamp)}
                       </span>
                     </div>
