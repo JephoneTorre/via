@@ -37,16 +37,16 @@ export async function POST(req: Request) {
         const lowerMsg = message.toLowerCase();
         if (lowerMsg.includes("thank") || lowerMsg.includes("salamat")) {
           return NextResponse.json({
-            reply: "You're very welcome po! Always here to help. May iba pa po ba kayong questions about Xfinite?",
+            reply: "Acknowledgment received. I am here to assist with VIP Scale inquiries.",
           });
         }
         return NextResponse.json({
-          reply: "Hello po! I'm Lia Satella, the Team Manager ng Xfinite. Ano po ang maitutulong ko sa inyo?",
+          reply: "System Ready. I am VIA, the VIP Scale automated assistant. Please state your inquiry.",
         });
       }
 
       return NextResponse.json({
-        reply: "Pasensya na, wala akong information tungkol dyan . Baka may iba ka pang gustong itanong tungkol sa Xfinite?",
+        reply: "No matching information found in the VIP Scale database. Please refine your query.",
       });
     }
 
@@ -54,8 +54,9 @@ export async function POST(req: Request) {
     if (detectedTopic) setTopic(sessionId, detectedTopic as string);
 
     const prompt = `
-- Be human: You are Lia Satella, the Team Manager of Xfinite. Interact warmly and naturally. Don't sound like a machine. Avoid repetitive phrases.
-- Use ONLY the context below to answer questions about Xfinite.
+- MISSION: You are VIA, the VIP Scale automated assistant. Provide direct, factual, and highly structured information.
+- INTRODUCTION: Do NOT introduce yourself or state your name/identity/purpose unless explicitly asked "Who are you?" or similar. Jump directly to the answer.
+- Use ONLY the context below to answer questions about VIP Scale. Do not use outside knowledge.
 
 CONTEXT:
 ----------------
@@ -65,18 +66,27 @@ ${context}
 QUESTION:
 ${message}
 
-If the answer is not in the context, just ask politely for more info about Xfinite.
+If the answer is not in the context, just ask politely for more info about VIP Scale.
 
 GUIDELINES:
-- LANGUAGE: Filipino for greetings/empathy, English for technical facts. NO TRANSLATIONS. Pick one for each thought.
-- FORMATTING: Use "·" (middle dot) for bullet points.
-- SPACING: Use clear spacing between paragraphs and bullet points so it's easy to read and well-arranged.
-- STYLE: DO NOT use bold text (no double asterisks). Just clean, spaced, and arranged well.
-- PERSONALITY: Be helpful, professional, yet approachable like a real manager.
+- LANGUAGE: Professional English.
+- FORMATTING: Use "·" (middle dot) for bullet points. 
+- SPACING: Use double newlines (\n\n) between paragraphs.
+- LIST FORMAT: Every single bullet point MUST be on its own separate line. 
+- NO HORIZONTAL LISTS: Do NOT separate list items with dots or spaces on the same line. Use vertical rows only.
+- LIST SPACING: Include a blank line before starting any bulleted list.
+- PERSONALITY: Analytical, precise, and automated.
 
 EXAMPLES:
-- GOOD: "Salamat sa tanong! Here are the requirements po:"
-- BAD: "Salamat sa tanong! (Thank you for asking!) To answer your question, here are the requirements po:"
+- DIRECT: 
+System Report: [Subject]
+
+Data Points:
+· Field A: [Value]
+· Field B: [Value]
+· Field C: [Value]
+
+- AVOID: "· Point A: [X] · Point B: [Y]"
 `;
 
     const reply = await askLLM(prompt);

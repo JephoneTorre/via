@@ -276,8 +276,8 @@ export default function Home() {
                   <div className={`flex items-start gap-4 max-w-[90%] md:max-w-[80%] ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                     
                     {m.role === "assistant" && (
-                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-white/10 shadow-lg">
-                        <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-cover scale-125" />
+                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-white/10 shadow-lg p-1.5">
+                        <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
                       </div>
                     )}
 
@@ -317,8 +317,8 @@ export default function Home() {
 
             {botStatus === "typing" && (
               <div className="flex items-start gap-4 animate-pulse">
-                <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card border border-white/10">
-                  <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain scale-125" />
+                <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card border border-white/10 p-1.5">
+                  <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
                 </div>
                 <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />

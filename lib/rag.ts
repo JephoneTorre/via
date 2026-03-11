@@ -35,7 +35,8 @@ const MEANING: Record<string,string[]> = {
   time: ["hours","schedule","shift","duration","time"],
   apply: ["hiring","join","start","application","enroll","slots","register","apply","joining","started"],
   contact: ["inquiry","email","facebook","social","reached","reach","inquiries","ig","instagram","linkedIn","fb"],
-  xfinite: ["xf", "xfnite", "project", "label", "labeling", "building", "roof", "satellite", "map", "ginger", "bitmappro", "cedrick"],
+  via: ["via", "vip scale", "bot", "assistant", "company", "protocol"],
+  vip: ["vip", "scale", "premium", "digital", "strategy"],
 };
 
 /* ================= NORMALIZATION ================= */
@@ -121,7 +122,7 @@ function scoreItem(item: KBItem, queryTokens: string[]) {
 
   // Explicit check for common keywords in content
   for (const q of queryTokens) {
-    if (q === "xfinite" && item.source === "xfinite") bestSentenceScore += 10;
+    if (q === "via" || q === "vip") bestSentenceScore += 10;
   }
 
   // title hint
