@@ -207,7 +207,7 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <div className="relative h-8 w-32">
               <Image 
-                src="/icon/vip.png" 
+                src="/icon/header.png" 
                 alt="VIP Logo" 
                 fill
                 className="object-contain"
@@ -233,7 +233,7 @@ export default function Home() {
               <div className="inline-flex items-center gap-6 px-10 py-4 rounded-full border border-slate-200 bg-white shadow-md mb-8">
                 <div className="relative w-24 h-12">
                   <Image 
-                    src="/icon/vip.png" 
+                    src="/icon/header.png" 
                     alt="VIP" 
                     fill
                     className="object-contain"
