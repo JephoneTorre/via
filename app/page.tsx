@@ -90,8 +90,8 @@ export default function Home() {
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "rgba(219, 39, 119, 0.15)";
-      ctx.strokeStyle = "rgba(219, 39, 119, 0.08)";
+      ctx.fillStyle = "rgba(219, 39, 119, 0.4)"; // Brightened particles
+      ctx.strokeStyle = "rgba(219, 39, 119, 0.2)"; // Brightened lines
 
       particles.forEach((p, i) => {
         p.x += p.vx; p.y += p.vy;
@@ -116,7 +116,7 @@ export default function Home() {
           const dy = p.y - p2.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < connectionRadius) {
-            ctx.lineWidth = 1 - dist / connectionRadius;
+            ctx.lineWidth = (1 - dist / connectionRadius) * 1.5; // Thicker lines
             ctx.beginPath();
             ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
@@ -195,7 +195,7 @@ export default function Home() {
   return (
     <div className="h-screen flex selection:bg-primary/30 relative overflow-hidden">
       {/* SIDEBAR */}
-      <aside className="hidden md:flex w-20 flex-col items-center py-8 gap-10 z-40 border-r border-slate-200/60 bg-white/40 backdrop-blur-xl">
+      <aside className="hidden md:flex w-20 flex-col items-center py-8 gap-10 z-40 border-r border-slate-200/60 bg-white/20 backdrop-blur-2xl">
         <div className="relative w-10 h-10 transition-all duration-500 hover:scale-110">
            <Image src="/icon/vip.png" alt="VIA" fill className="object-contain" />
         </div>
@@ -231,7 +231,7 @@ export default function Home() {
         <canvas 
           ref={canvasRef} 
           className="fixed top-0 left-0 w-full h-full pointer-events-none z-[-1]"
-          style={{ opacity: 0.6 }}
+          style={{ opacity: 0.9 }}
         />
         
         {/* HEADER */}
