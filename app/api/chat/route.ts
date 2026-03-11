@@ -29,24 +29,29 @@ export async function POST(req: Request) {
     }
 
     if (context === "NO_CONTEXT_FOUND") {
-      const tokens = message.toLowerCase().split(/\s+/);
-      const socialPhrases = ["hi", "hello", "hey", "kamusta", "kumusta", "thanks", "thank you", "salamat", "thankyou"];
-      const isSocial = socialPhrases.some(p => message.toLowerCase().includes(p)) || tokens.some((t: string) => socialPhrases.includes(t));
+      const lowerMsg = message.toLowerCase().trim();
+      const tokens = lowerMsg.split(/\s+/);
       
-      if (isSocial) {
-        const lowerMsg = message.toLowerCase();
-        if (lowerMsg.includes("thank") || lowerMsg.includes("salamat")) {
-          return NextResponse.json({
-            reply: "Acknowledgment received. I am here to assist with VIP Scale inquiries.",
-          });
-        }
+      const greetings = ["hi", "hello", "hey", "kamusta", "kumusta", "good morning", "good afternoon", "good evening", "yo"];
+      const gratitude = ["thanks", "thank you", "salamat", "thankyou", "much appreciated"];
+      
+      const isGreeting = greetings.some(g => lowerMsg === g || lowerMsg.startsWith(g + " ") || tokens.includes(g));
+      const isGratitude = gratitude.some(g => lowerMsg.includes(g));
+      
+      if (isGreeting) {
         return NextResponse.json({
-          reply: "System Ready. I am VIA, the VIP Scale automated assistant. Please state your inquiry.",
+          reply: "System Online. I am VIA, the VIP Scale automated assistant. How may I assist with your inquiries regarding operations or client data?",
+        });
+      }
+
+      if (isGratitude) {
+        return NextResponse.json({
+          reply: "Acknowledgment received. I am here to assist with VIP Scale inquiries. Protocol remains active.",
         });
       }
 
       return NextResponse.json({
-        reply: "No matching information found in the VIP Scale database. Please refine your query.",
+        reply: "No matching information found in the VIP Scale database. Please refine your query with specific keywords like a client name or company protocol.",
       });
     }
 
