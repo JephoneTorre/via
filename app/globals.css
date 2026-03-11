@@ -121,6 +121,7 @@ h1, h2, h3 {
 .markdown-content {
   line-height: 1.6;
   color: #334155;
+  white-space: pre-wrap;
 }
 
 .markdown-content strong {

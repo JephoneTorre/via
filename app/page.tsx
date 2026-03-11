@@ -306,8 +306,8 @@ export default function Home() {
 
                   {isLastUserMsg && (
                     <div className="mt-2 flex flex-col items-end px-2">
-                       <span className="text-[10px] text-primary/60 font-semibold tracking-widest uppercase">
-                          {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.toUpperCase()) : "Transmitting"}
+                       <span className="text-[10px] text-primary/60 font-semibold tracking-widest">
+                          {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.charAt(0).toUpperCase() + botStatus.slice(1)) : "Transmitting"}
                        </span>
                     </div>
                   )}

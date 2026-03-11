@@ -10,18 +10,18 @@ type KBItem = {
 
 const KB: KBItem[] = [
   ...dataset.active_clients.map(c => ({
-    title: `Active Client: ${c.name}`,
-    content: `Status: Active. Tracking: ${c.tracking_method}. ClickUp: ${c.clickup_id || "N/A"}. Project: ${c.project || "N/A"}. Email: ${c.email || (c.emails ? c.emails.join(", ") : "N/A")}. KYC: ${c.kyc || "N/A"}.`,
+    title: `${c.name}`,
+    content: `Status: Active\nTracking: ${c.tracking_method}\nClickUp: ${c.clickup_id || "N/A"}\nProject: ${c.project || "N/A"}\nEmail: ${c.email || (c.emails ? c.emails.join(", ") : "N/A")}\nKYC: ${c.kyc || "N/A"}`,
     source: "clients"
   })),
   ...dataset.paused_clients.map(c => ({
-    title: `Paused Client: ${c.name}`,
-    content: `Status: Paused. Tracking: ${c.tracking_method}.`,
+    title: `${c.name}`,
+    content: `Status: Paused\nTracking: ${c.tracking_method}`,
     source: "clients"
   })),
   ...dataset.stopped_clients.map(c => ({
-    title: `Stopped Client: ${c.name}`,
-    content: `Status: Stopped. Tracking: ${c.tracking_method}.`,
+    title: `${c.name}`,
+    content: `Status: Stopped\nTracking: ${c.tracking_method}`,
     source: "clients"
   })),
 ];
@@ -173,7 +173,7 @@ export function retrieveContext(query: string, forcedTopic?: string) {
     Object.entries(topicCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
 
   return {
-    context: ranked.map(r => `${r.item.title}: ${r.item.content}`).join("\n"),
+    context: ranked.map(r => `${r.item.title}\n${r.item.content}`).join("\n\n"),
     detectedTopic
   };
 }
