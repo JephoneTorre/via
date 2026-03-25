@@ -1,192 +1,182 @@
-import dataset from "@/app/data/dataset.json";
+const OLLAMA_HOST = "http://127.0.0.1:11434"; 
+const EMBEDDING_MODEL = "nomic-embed-text:latest";
+import { createInternalClient } from "@/supabase/server";
 
-type KBItem = {
-  title: string;
-  content: string;
-  source: string;
-};
-
-/* ================= BUILD KB ================= */
-
-const KB: KBItem[] = [
-  ...dataset.active_clients.map(c => ({
-    title: `${c.name}`,
-    content: `Status: Active\nTracking: ${c.tracking_method}\nClickUp: ${c.clickup_id || "N/A"}\nProject: ${c.project || "N/A"}\nEmail: ${c.email || (c.emails ? c.emails.join(", ") : "N/A")}\nKYC: ${c.kyc || "N/A"}`,
-    source: "clients"
-  })),
-  ...dataset.paused_clients.map(c => ({
-    title: `${c.name}`,
-    content: `Status: Paused\nTracking: ${c.tracking_method}`,
-    source: "clients"
-  })),
-  ...dataset.stopped_clients.map(c => ({
-    title: `${c.name}`,
-    content: `Status: Stopped\nTracking: ${c.tracking_method}`,
-    source: "clients"
-  })),
-];
-
-const MEANING: Record<string,string[]> = {
-  pay: ["salary","income","earn","earnings","rate","payout","paid","money","cash","salary","payment"],
-  monthly: ["month","4","weeks","cycle"],
-  requirements: ["requirement","needs","needed","qualification","prerequisite","specs","system"],
-  training: ["orientation","lesson","course","session","video","hands-on"],
-  install: ["setup","installation","installing","ginger","software"],
-  time: ["hours","schedule","shift","duration","time"],
-  apply: ["hiring","join","start","application","enroll","slots","register","apply","joining","started"],
-  contact: ["inquiry","email","facebook","social","reached","reach","inquiries","ig","instagram","linkedIn","fb"],
-  via: ["via", "vip scale", "bot", "assistant", "company", "protocol"],
-  vip: ["vip", "scale", "premium", "digital", "strategy"],
-};
-
-/* ================= NORMALIZATION ================= */
-
-function normalize(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenize(text: string) {
-  return normalize(text).split(" ");
-}
-
-/* ================= STOPWORDS ================= */
-
-const STOPWORDS = new Set([
-  "what","is","are","the","a","an","do","you","know","about","tell","me",
-  "can","i","how","to","of","for","in","on","at","with","and","or","if",
-  "does","it","they","their","there"
-]);
-
-function meaningful(tokens: string[]) {
-  return tokens.filter(t => !STOPWORDS.has(t.toLowerCase()) && t.length >= 2);
-}
-
-/* ================= SIMILARITY ================= */
-
-function similarity(a: string, b: string) {
-  if (a === b) return 1;
-  
-  // Fuzzy inclusion check
-  if (a.includes(b) || b.includes(a)) {
-    const shorter = a.length < b.length ? a : b;
-    // Only high score if word is substantial or is a prefix
-    if (shorter.length >= 3) return 0.85;
-    if (a.startsWith(b) || b.startsWith(a)) return 0.85;
+export async function getEmbedding(text: string): Promise<number[]> {
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/embeddings`, {
+      method: "POST",
+      body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
+    });
+    if (!res.ok) throw new Error("Ollama embedding failed");
+    const data = await res.json();
+    return data.embedding;
+  } catch (err) {
+    console.error("Embedding Error:", err);
+    throw err;
   }
-
-  let match = 0;
-  for (let i = 0; i < Math.min(a.length,b.length); i++) {
-    if (a[i] === b[i]) match++;
-  }
-  return match / Math.max(a.length,b.length);
 }
 
-/* ================= SENTENCE SPLITTER ================= */
+const N8N_FETCH_URL = "https://n8n.heysnaply.com/webhook/fetch-all-data";
 
-function sentences(text: string) {
-  return text.split(/(?<=[.!?])/);
-}
+export async function retrieveContext(query: string) {
+  try {
+    console.log("RAG: Fetching consolidated data from n8n...");
+    const res = await fetch(N8N_FETCH_URL);
+    if (!res.ok) throw new Error("n8n data fetch failed");
+    
+    const rootData = await res.json();
+    
+    // N8N often returns an array if using "All Incoming Items"
+    const actualData = Array.isArray(rootData) ? rootData[0] : rootData;
+    
+    // Now look for the "data" or "clients" array within that object
+    // Handle both direct "data" key and nested data under "Merge All Data1" or "clients"
+    let clients = Array.isArray(actualData?.data) ? actualData.data : (actualData?.clients || []);
+    if (clients.length === 0 && actualData["Merge All Data1"]?.data) {
+      clients = actualData["Merge All Data1"].data;
+    }
+    
+    // Check if the "data" array actually contains SOP documents instead of clients
+    const allItems = Array.isArray(actualData?.data) ? actualData.data : [];
+    const sopFromData = allItems.filter((i: any) => i.metadata?.type === "sop_document");
+    // If "data" is purely SOPs, then reset clients if they were wrongly guessed
+    if (sopFromData.length > 0 && clients === allItems && !allItems[0]?.name) {
+       clients = [];
+    }
+    
+    const queryLower = query.toLowerCase();
+    const words = queryLower.split(/\s+/).filter(w => w.length > 3);
+    
+    const contextParts: string[] = [];
 
-/* ================= DEEP SCORING ================= */
+    // Helper: Match record against keywords
+    const isMatch = (record: Record<string, unknown>) => {
+      const target = JSON.stringify(record).toLowerCase();
+      return words.length === 0 || words.some(w => target.includes(w));
+    };
 
-function scoreItem(item: KBItem, queryTokens: string[]) {
+    // PROCESS CONSOLIDATED CLIENT DATA
+    const matchedClients = clients
+      .filter(isMatch)
+      .sort((a: any, b: any) => {
+        // Prioritize clients with analysis data (face/body)
+        const aScore = (a.face_data ? 1 : 0) + (a.body_data ? 1 : 0) + (a.persona_details ? 1 : 0);
+        const bScore = (b.face_data ? 1 : 0) + (b.body_data ? 1 : 0) + (b.persona_details ? 1 : 0);
+        return bScore - aScore;
+      })
+      .slice(0, 5);
 
-  const allSentences = sentences(item.content);
-  let bestSentenceScore = 0;
+    for (const c of matchedClients) {
+      const clientName = c.name || c.client || "Unknown Client";
+      let clientContext = `[CLIENT DATA]:\nName: ${clientName}\nStatus: ${c.isActive ? 'Active' : 'Inactive'}\nTracking: ${c.tracker || 'N/A'}`;
+      
+      if (c.clickup_id) clientContext += `\nClickUp: ${c.clickup_id}`;
+      if (c.vps) clientContext += `\nProject: ${c.vps}`;
 
-  for (const s of allSentences) {
-    const words = meaningful(tokenize(s));
-    let score = 0;
+      // Append Nested Details if they exist (New Workflow Structure)
+      if (c.persona_details) clientContext += `\nPERSONA: ${c.persona_details}`;
+      if (c.face_data?.face_analysis) clientContext += `\nFACE ANALYSIS: ${c.face_data.face_analysis}`;
+      if (c.body_data?.body_analysis) clientContext += `\nBODY ANALYSIS: ${c.body_data.body_analysis}`;
+      
+      if (Array.isArray(c.broll_tags) && c.broll_tags.length > 0) {
+        const tags = c.broll_tags.map((b: Record<string, unknown>) => b.tags).join(", ");
+        clientContext += `\nB-ROLL TAGS: ${tags}`;
+      }
 
-    for (const q of queryTokens) {
-      for (const w of words) {
-        const sim = similarity(q, w);
+      if (Array.isArray(c.sop_docs) && c.sop_docs.length > 0) {
+        const docs = c.sop_docs.map((s: Record<string, unknown>) => s.content).join("\n");
+        clientContext += `\nSOP DOCUMENTS:\n${docs}`;
+      }
 
-        if (sim > 0.9) score += 6;
-        else if (sim > 0.75) score += 3;
-        else if (sim > 0.6) score += 1;
+      contextParts.push(clientContext);
+    }
+
+    // DIRECT SUPABASE FALLBACK FOR SOP (if n8n is missing it)
+    if (sopFromData.length === 0) {
+      try {
+        const supabase = createInternalClient();
+        const { data: directSOP } = await supabase
+          .from("SOP")
+          .select("content, metadata")
+          .limit(10); // Fetch recent or all if small
+          
+        if (directSOP && Array.isArray(directSOP)) {
+          const matchedDirectSOP = directSOP.filter(isMatch).slice(0, 5);
+          if (matchedDirectSOP.length > 0) {
+            contextParts.push(...matchedDirectSOP.map((s: any) => `[SOP CONTENT]: ${s.content}`));
+            console.log(`RAG: Found ${matchedDirectSOP.length} matching SOP docs from direct Supabase fallback.`);
+          }
+        }
+      } catch (e) {
+        console.error("Supabase fallback failed:", e);
       }
     }
 
-    bestSentenceScore = Math.max(bestSentenceScore, score);
-  }
-
-  // Brand boost: if query contains source name
-  if (queryTokens.includes(item.source)) {
-    bestSentenceScore += 50;
-  }
-
-  // Explicit check for common keywords in content
-  for (const q of queryTokens) {
-    if (q === "via" || q === "vip") bestSentenceScore += 10;
-  }
-
-  // title hint
-  const title = normalize(item.title);
-  for (const q of queryTokens) {
-    if (title.includes(q)) bestSentenceScore += 25; // Increased boost for title matches
-    if (q === item.source) bestSentenceScore += 10;
-  }
-
-  return bestSentenceScore;
-}
-
-
-/* ================= RETRIEVER ================= */
-
-export function retrieveContext(query: string, forcedTopic?: string) {
-
-  let tokens = meaningful(tokenize(query));
-  tokens = expandMeaning(tokens);
-
-  let candidates = KB;
-
-  if (forcedTopic) {
-    candidates = [
-      ...KB.filter(x => x.source === forcedTopic),
-      ...KB.filter(x => x.source !== forcedTopic),
+    // Handle standalone SOP if not nested (Fallback for old structure)
+    // We check rootData, actualData, and specific keys like "SOP" or "Wrap SOP"
+    const standaloneSOPItems = [
+      ...(Array.isArray(rootData.SOP) ? rootData.SOP : []),
+      ...(Array.isArray(actualData.SOP) ? actualData.SOP : []),
+      ...(Array.isArray(actualData["Wrap SOP"]?.data) ? actualData["Wrap SOP"].data : []),
+      ...(Array.isArray(actualData["Wrap SOP"]) ? actualData["Wrap SOP"] : []),
+      ...sopFromData // Already extracted from actualData.data if type was sop_document
     ];
+
+    if (standaloneSOPItems.length > 0) {
+      const standaloneSOP = standaloneSOPItems.filter(isMatch).slice(0, 5);
+      contextParts.push(...standaloneSOP.map((s: Record<string, unknown>) => `[SOP CONTENT]: ${s.content}`));
+      console.log(`RAG: Found ${standaloneSOP.length} matching standalone SOP docs.`);
+    }
+
+    // NEW: FETCH ASSISTANT/TEAM DATA
+    try {
+      const supabase = createInternalClient();
+      const { data: assistantData } = await supabase
+        .from("assistant")
+        .select("*")
+        .limit(10);
+        
+      if (assistantData && Array.isArray(assistantData)) {
+        const matchedAssistants = assistantData.filter(isMatch).slice(0, 3);
+        for (const a of matchedAssistants) {
+          contextParts.push(`[TEAM MEMBER]:\nName: ${a.name}\nEmail: ${a.email}\nStatus: ${a.is_active ? 'Active' : 'Inactive'}\nType: ${a.employment_type || 'N/A'}\nClickUp ID: ${a.clickup_id || 'N/A'}\nDaily Schedule: ${a.daily_schedule_sheet || 'N/A'}\nSalary Sheet: ${a.salary_sheet || 'N/A'}`);
+        }
+        if (matchedAssistants.length > 0) {
+          console.log(`RAG: Found ${matchedAssistants.length} matching assistant records.`);
+        }
+      }
+    } catch (e) {
+      console.error("Assistant Fetch Error:", e);
+    }
+
+    const context = contextParts.join("\n\n---\n\n");
+    console.log(`RAG: Found ${matchedClients.length} matching client profiles.`);
+
+    return { 
+      context: context || "NO_CONTEXT_FOUND",
+      detectedTopic: words[0] || null
+    };
+
+  } catch (err) {
+    console.error("n8n RAG ERROR:", err);
+    return { context: "NO_CONTEXT_FOUND", detectedTopic: null };
   }
-
-    const ranked = candidates
-    .map(item => ({
-      item,
-      score: scoreItem(item, tokens)
-    }))
-    .filter(r => r.score > 0)
-    .sort((a,b)=>b.score-a.score)
-    .slice(0,10); // Increased from 5 to 10 context items
-
-  if (!ranked.length)
-    return { context: "NO_CONTEXT_FOUND" };
-
-  const topicCount: Record<string,number> = {};
-  for (const r of ranked) {
-    topicCount[r.item.source] = (topicCount[r.item.source]||0)+1;
-  }
-
-  const detectedTopic =
-    Object.entries(topicCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
-
-  return {
-    context: ranked.map(r => `${r.item.title}\n${r.item.content}`).join("\n\n"),
-    detectedTopic
-  };
 }
 
-function expandMeaning(tokens: string[]) {
-  const expanded = new Set(tokens);
+export function chunkText(text: string, size = 1000): string[] {
+  const chunks: string[] = [];
+  const words = text.split(/\s+/);
+  let current = "";
 
-  for (const token of tokens) {
-    for (const key in MEANING) {
-      if (MEANING[key].includes(token)) expanded.add(key);
-      if (token === key) MEANING[key].forEach(w => expanded.add(w));
+  for (const word of words) {
+    if ((current + word).length > size) {
+      chunks.push(current.trim());
+      current = word + " ";
+    } else {
+      current += word + " ";
     }
   }
-
-  return [...expanded];
+  if (current) chunks.push(current.trim());
+  return chunks;
 }

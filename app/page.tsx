@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
+import { ingestText } from "@/lib/ingest";
+import KnowledgeBase from "@/components/KnowledgeBase";
 
 // --- TYPES ---
 type Msg = {
@@ -18,6 +20,8 @@ export default function Home() {
   const [botStatus, setBotStatus] = useState<"idle" | "waiting" | "seen" | "analyzing" | "typing">("idle");
   const [lastMessageSeen, setLastMessageSeen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [activeView, setActiveView] = useState<"chat" | "dataset">("chat");
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -188,6 +192,68 @@ export default function Home() {
     setBotStatus("idle");
   }
 
+  async function handlePDFUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    let totalChunks = 0;
+    
+    try {
+      // 1. DYNAMIC IMPORT PDFJS
+      const pdfjs = await import("pdfjs-dist");
+      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+      for (const file of Array.from(files)) {
+        console.log(`Processing ${file.name}...`);
+        
+        // 2. READ PDF FILE
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        
+        let fullText = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(" ");
+          fullText += pageText + "\n";
+        }
+
+        const cleanText = fullText.replace(/\s+/g, " ").trim();
+        if (!cleanText) {
+          console.warn(`Could not extract text from ${file.name}`);
+          continue;
+        }
+
+        // 3. SEND TO SERVER ACTION
+        const res = await ingestText(cleanText, file.name);
+        if (res.success) {
+          totalChunks += res.chunks || 0;
+        } else {
+          throw new Error(`Upload failed for ${file.name}: ${res.error}`);
+        }
+      }
+      
+      alert(`Successfully processed ${files.length} documents (${totalChunks} total chunks) into VIP Scale database.`);
+      
+      // If we are in dataset view, we should probably refresh it, but it uses its own state/effect
+      if (activeView === "dataset") {
+        window.location.reload(); // Simple refresh for now to update the dataset view
+      }
+
+    } catch (err: any) {
+      console.error("PDF UPLOAD ERROR:", err);
+      alert("Error uploading PDF: " + err.message);
+    } finally {
+      setIsUploading(false);
+      // Reset input
+      e.target.value = "";
+    }
+  }
+
   function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") sendMessage();
   }
@@ -203,8 +269,34 @@ export default function Home() {
         <div className="flex-1 flex flex-col items-center gap-6">
           <div className="w-8 h-[1px] bg-slate-200" />
           
+          <button 
+            onClick={() => setActiveView("chat")}
+            className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center transition-all group relative border shadow-sm ${activeView === "chat" ? "bg-white text-primary border-primary/20 scale-110 shadow-lg shadow-primary/10" : "text-slate-400 border-slate-100 hover:text-primary hover:bg-white"}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <div className="absolute left-16 px-4 py-2 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap pointer-events-none uppercase tracking-widest font-black shadow-2xl z-50">
+              Strategic Chat
+              <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rotate-45" />
+            </div>
+          </button>
+
+          <button 
+            onClick={() => setActiveView("dataset")}
+            className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center transition-all group relative border shadow-sm ${activeView === "dataset" ? "bg-white text-primary border-primary/20 scale-110 shadow-lg shadow-primary/10" : "text-slate-400 border-slate-100 hover:text-primary hover:bg-white"}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div className="absolute left-16 px-4 py-2 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap pointer-events-none uppercase tracking-widest font-black shadow-2xl z-50">
+              Knowledge Base
+              <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rotate-45" />
+            </div>
+          </button>
+
           <a 
-            href="https://docs.google.com/spreadsheets/d/1koB3El_dRHnXDqgNfEP8e04oFf4s7DiMAhrogZ7blXA/edit?gid=968444285#gid=968444285"
+            href="https://docs.google.com/spreadsheets/d/16jhIyA89RfkliY-88RRkc27VpcqzHfgYGHsNIYc1H-I/edit?gid=583061340#gid=583061340"
             target="_blank"
             rel="noopener noreferrer"
             className="w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-primary hover:bg-white transition-all group relative border-slate-100 shadow-sm"
@@ -213,12 +305,30 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
             
-            {/* Tooltip */}
             <div className="absolute left-16 px-4 py-2 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap pointer-events-none uppercase tracking-widest font-black shadow-2xl z-50">
-              Edit Dataset
+              Edit Master Dataset
               <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rotate-45" />
             </div>
           </a>
+
+          {/* UPLOAD PDF BUTTON */}
+          <label className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-primary hover:bg-white transition-all group relative border-slate-100 shadow-sm cursor-pointer ${isUploading ? "animate-pulse" : ""}`}>
+            <input 
+              type="file" 
+              accept=".pdf" 
+              multiple
+              className="hidden" 
+              onChange={handlePDFUpload}
+              disabled={isUploading}
+            />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <div className="absolute left-16 px-4 py-2 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap pointer-events-none uppercase tracking-widest font-black shadow-2xl z-50">
+              {isUploading ? "Processing..." : "Bulk Upload Knowledge (PDF)"}
+              <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rotate-45" />
+            </div>
+          </label>
         </div>
 
         <div className="mt-auto flex flex-col items-center gap-6">
@@ -257,146 +367,151 @@ export default function Home() {
           </div>
         </header>
 
-        {/* CHAT AREA */}
-        <main className="flex-1 overflow-y-auto scroll-smooth relative">
-          <div className="max-w-3xl mx-auto py-12 px-6 relative z-10">
+        {activeView === "chat" ? (
+          <>
+            {/* CHAT AREA */}
+            <main className="flex-1 overflow-y-auto scroll-smooth relative">
+              <div className="max-w-3xl mx-auto py-12 px-6 relative z-10">
 
-            {messages.length === 0 && (
-              <div className="text-center pt-24 space-y-10 animate-float">
-                <div className="inline-flex items-center gap-6 px-10 py-4 rounded-full border border-slate-200 bg-white shadow-md mb-8">
-                  <div className="relative w-24 h-12">
-                    <Image 
-                      src="/icon/header.png" 
-                      alt="VIP" 
-                      fill
-                      className="object-contain"
-                    />
-                  </div>
-                  <div className="w-[1px] h-8 bg-slate-200" />
-                  <span className="text-xl uppercase tracking-[0.4em] font-black text-slate-500">VIA</span>
-                </div>
-                <div className="space-y-4">
-                  <h2 className="text-5xl md:text-6xl font-display font-black tracking-tight text-slate-900">
-                    We craft <span className="text-primary italic">intelligence</span> <br />
-                    and digital strategy
-                  </h2>
-                  <p className="max-w-lg mx-auto text-slate-500 text-sm font-medium leading-relaxed">
-                    I am VIA, your specialized company assistant. I provide detailed insights about operations, internal protocols, and strategic digital activations.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto pt-8">
-                  {["Client Portfolio Details", "Company Policy Search", "Project Status Updates", "Departmental Contacts"].map((prompt) => (
-                    <button 
-                      key={prompt}
-                      onClick={() => setInput(prompt)}
-                      className="glass-card hover:bg-white text-left p-5 rounded-[2rem] text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/30 transition-all border-slate-100 shadow-sm flex items-center justify-between group"
-                    >
-                      {prompt}
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity text-primary">→</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-8">
-              {messages.map((m, i) => {
-                const isLastUserMsg = m.role === "user" && i === messages.length - 1;
-
-                return (
-                  <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
-                    
-                    <div className={`flex items-start gap-4 max-w-[90%] md:max-w-[80%] ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                      
-                      {m.role === "assistant" && (
-                        <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-white/10 shadow-lg p-1.5">
-                          <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
-                        </div>
-                      )}
-
-                      <div className="flex flex-col">
-                        <div
-                          className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed
-                          ${
-                            m.role === "user"
-                              ? "message-user text-white rounded-tr-sm"
-                              : "message-assistant text-slate-800 rounded-tl-sm bg-white border border-slate-100 font-medium"
-                          }`}
+                {messages.length === 0 && (
+                  <div className="text-center pt-24 space-y-10 animate-float">
+                    <div className="inline-flex items-center gap-6 px-10 py-4 rounded-full border border-slate-200 bg-white shadow-md mb-8">
+                      <div className="relative w-24 h-12">
+                        <Image 
+                          src="/icon/header.png" 
+                          alt="VIP" 
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
+                      <div className="w-[1px] h-8 bg-slate-200" />
+                      <span className="text-xl uppercase tracking-[0.4em] font-black text-slate-500">VIA</span>
+                    </div>
+                    <div className="space-y-4">
+                      <h2 className="text-5xl md:text-6xl font-display font-black tracking-tight text-slate-900">
+                        We craft <span className="text-primary italic">intelligence</span> <br />
+                        and digital strategy
+                      </h2>
+                      <p className="max-w-lg mx-auto text-slate-500 text-sm font-medium leading-relaxed">
+                        I am VIA, your specialized company assistant. I provide detailed insights about operations, internal protocols, and strategic digital activations.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto pt-8">
+                      {["Client Portfolio Details", "Company Policy Search", "Project Status Updates", "Departmental Contacts"].map((prompt) => (
+                        <button 
+                          key={prompt}
+                          onClick={() => setInput(prompt)}
+                          className="glass-card hover:bg-white text-left p-5 rounded-[2rem] text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/30 transition-all border-slate-100 shadow-sm flex items-center justify-between group"
                         >
-                          {m.role === "assistant" ? 
-                            <div className="prose prose-sm max-w-none markdown-content font-sans">
-                              <ReactMarkdown>{m.text}</ReactMarkdown>
-                            </div> : 
-                            <span>{m.text}</span>
-                          }
-                        </div>
+                          {prompt}
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-primary">→</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-8">
+                  {messages.map((m, i) => {
+                    const isLastUserMsg = m.role === "user" && i === messages.length - 1;
+
+                    return (
+                      <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                         
-                        <span className={`text-[9px] text-slate-400 mt-2 font-bold tracking-widest uppercase px-2 ${m.role === "user" ? "text-right" : "text-left"}`}>
-                          {formatTime(m.timestamp)}
-                        </span>
+                        <div className={`flex items-start gap-4 max-w-[90%] md:max-w-[80%] ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                          
+                          {m.role === "assistant" && (
+                            <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-white/10 shadow-lg p-1.5">
+                              <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
+                            </div>
+                          )}
+
+                          <div className="flex flex-col">
+                            <div
+                              className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed
+                              ${
+                                m.role === "user"
+                                  ? "message-user text-white rounded-tr-sm"
+                                  : "message-assistant text-slate-800 rounded-tl-sm bg-white border border-slate-100 font-medium"
+                              }`}
+                            >
+                              {m.role === "assistant" ? 
+                                <div className="prose prose-sm max-w-none markdown-content font-sans">
+                                  <ReactMarkdown>{m.text}</ReactMarkdown>
+                                </div> : 
+                                <span>{m.text}</span>
+                              }
+                            </div>
+                            
+                            <span className={`text-[9px] text-slate-400 mt-2 font-bold tracking-widest uppercase px-2 ${m.role === "user" ? "text-right" : "text-left"}`}>
+                              {formatTime(m.timestamp)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isLastUserMsg && (
+                          <div className="mt-2 flex flex-col items-end px-2">
+                             <span className="text-[10px] text-primary/60 font-semibold tracking-widest">
+                                {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.charAt(0).toUpperCase() + botStatus.slice(1)) : "Transmitting"}
+                             </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {botStatus === "typing" && (
+                    <div className="flex items-start gap-4 animate-pulse">
+                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card border border-white/10 p-1.5">
+                        <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
+                      </div>
+                      <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_var(--primary-glow)]" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_var(--primary-glow)]" />
                       </div>
                     </div>
-
-                    {isLastUserMsg && (
-                      <div className="mt-2 flex flex-col items-end px-2">
-                         <span className="text-[10px] text-primary/60 font-semibold tracking-widest">
-                            {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.charAt(0).toUpperCase() + botStatus.slice(1)) : "Transmitting"}
-                         </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {botStatus === "typing" && (
-                <div className="flex items-start gap-4 animate-pulse">
-                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card border border-white/10 p-1.5">
-                    <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
-                  </div>
-                  <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_var(--primary-glow)]" />
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_var(--primary-glow)]" />
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div ref={bottomRef} className="h-20" />
-          </div>
-        </main>
+                <div ref={bottomRef} className="h-20" />
+              </div>
+            </main>
 
-        {/* INPUT AREA */}
-        <footer className="p-8 relative">
-          <div className="max-w-4xl mx-auto flex items-center gap-4 bg-white p-2 rounded-full border border-slate-200 shadow-xl">
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Type your strategic inquiry here..."
-              className="flex-1 bg-transparent text-slate-900 py-3 px-8 outline-none border-none text-[15px] placeholder:text-slate-300 font-semibold"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={botStatus !== "idle" || !input.trim()}
-              className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-black text-sm uppercase tracking-widest transition-all duration-300 shadow-md ${
-                botStatus !== "idle" || !input.trim() 
-                ? "bg-slate-50 text-slate-200 cursor-not-allowed" 
-                : "bg-primary text-white hover:bg-primary/90 hover:scale-[1.02] active:scale-95 shadow-primary/20"
-              }`}
-            >
-              Send
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-          <div className="max-w-4xl mx-auto mt-4">
-            <p className="text-[9px] text-center text-slate-400 uppercase tracking-[0.3em] font-black">
-              VIA &copy; 2026 VIP scale
-            </p>
-          </div>
-        </footer>
+            {/* INPUT AREA */}
+            <footer className="p-8 relative">
+              <div className="max-w-4xl mx-auto flex items-center gap-4 bg-white p-2 rounded-full border border-slate-200 shadow-xl">
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKey}
+                  placeholder="Type your strategic inquiry here..."
+                  className="flex-1 bg-transparent text-slate-900 py-3 px-8 outline-none border-none text-[15px] placeholder:text-slate-300 font-semibold"
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={botStatus !== "idle" || !input.trim()}
+                  className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 shadow-md ${
+                    botStatus !== "idle" || !input.trim() 
+                    ? "bg-slate-50 text-slate-200 cursor-not-allowed" 
+                    : "bg-primary text-white hover:bg-primary/90 hover:scale-[1.02] active:scale-95 shadow-primary/20"
+                  }`}
+                >
+                  <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="max-w-4xl mx-auto mt-4">
+                <p className="text-[9px] text-center text-slate-400 uppercase tracking-[0.3em] font-black">
+                  VIA &copy; 2026 VIP scale
+                </p>
+              </div>
+            </footer>
+          </>
+        ) : (
+          <KnowledgeBase />
+        )}
       </div>
     </div>
   );

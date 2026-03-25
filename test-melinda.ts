@@ -7,14 +7,18 @@ const queries = [
 ];
 
 console.log("=== MELINDA DEBUG ===");
-queries.forEach(q => {
+async function runTest() {
+  for (const q of queries) {
     console.log(`\nQuery: "${q}"`);
-    const res = retrieveContext(q);
+    const res = await retrieveContext(q);
     if (res.context === "NO_CONTEXT_FOUND") {
-        console.log("Result: NOT FOUND");
+      console.log("Result: NOT FOUND");
     } else {
-        console.log("Result: FOUND");
-        console.log("Detected Topic:", res.detectedTopic);
-        // console.log("Context:", res.context);
+      console.log("Result: FOUND");
+      console.log("Detected Topic:", res.detectedTopic);
+      // console.log("Context:", res.context);
     }
-});
+  }
+}
+
+runTest();
