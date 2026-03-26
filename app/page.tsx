@@ -94,8 +94,8 @@ export default function Home() {
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "rgba(219, 39, 119, 0.4)"; // Brightened particles
-      ctx.strokeStyle = "rgba(219, 39, 119, 0.2)"; // Brightened lines
+      ctx.fillStyle = "rgba(15, 23, 42, 0.1)"; // Neutral particles
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.05)"; // Subtler lines
 
       particles.forEach((p, i) => {
         p.x += p.vx; p.y += p.vy;
@@ -259,7 +259,7 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen flex selection:bg-primary/30 relative overflow-hidden">
+    <div className="h-screen flex selection:bg-accent/20 relative overflow-hidden">
       {/* SIDEBAR */}
       <aside className="hidden md:flex w-20 flex-col items-center py-8 gap-10 z-40 border-r border-slate-200/60 bg-white/20 backdrop-blur-2xl">
         <div className="relative w-10 h-10 transition-all duration-500 hover:scale-110">
@@ -271,7 +271,7 @@ export default function Home() {
           
           <button 
             onClick={() => setActiveView("chat")}
-            className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center transition-all group relative border shadow-sm ${activeView === "chat" ? "bg-white text-primary border-primary/20 scale-110 shadow-lg shadow-primary/10" : "text-slate-400 border-slate-100 hover:text-primary hover:bg-white"}`}
+            className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center transition-all group relative border shadow-sm ${activeView === "chat" ? "bg-white text-accent border-accent/20 scale-110 shadow-lg shadow-accent/10" : "text-slate-400 border-slate-100 hover:text-accent hover:bg-white"}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -284,7 +284,7 @@ export default function Home() {
 
           <button 
             onClick={() => setActiveView("dataset")}
-            className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center transition-all group relative border shadow-sm ${activeView === "dataset" ? "bg-white text-primary border-primary/20 scale-110 shadow-lg shadow-primary/10" : "text-slate-400 border-slate-100 hover:text-primary hover:bg-white"}`}
+            className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center transition-all group relative border shadow-sm ${activeView === "dataset" ? "bg-white text-accent border-accent/20 scale-110 shadow-lg shadow-accent/10" : "text-slate-400 border-slate-100 hover:text-accent hover:bg-white"}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -299,7 +299,7 @@ export default function Home() {
             href="https://docs.google.com/spreadsheets/d/16jhIyA89RfkliY-88RRkc27VpcqzHfgYGHsNIYc1H-I/edit?gid=583061340#gid=583061340"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-primary hover:bg-white transition-all group relative border-slate-100 shadow-sm"
+            className="w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-accent hover:bg-white transition-all group relative border-slate-100 shadow-sm"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -312,7 +312,7 @@ export default function Home() {
           </a>
 
           {/* UPLOAD PDF BUTTON */}
-          <label className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-primary hover:bg-white transition-all group relative border-slate-100 shadow-sm cursor-pointer ${isUploading ? "animate-pulse" : ""}`}>
+          <label className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-accent hover:bg-white transition-all group relative border-slate-100 shadow-sm cursor-pointer ${isUploading ? "animate-pulse" : ""}`}>
             <input 
               type="file" 
               accept=".pdf" 
@@ -389,7 +389,7 @@ export default function Home() {
                     </div>
                     <div className="space-y-4">
                       <h2 className="text-5xl md:text-6xl font-display font-black tracking-tight text-slate-900">
-                        We craft <span className="text-primary italic">intelligence</span> <br />
+                        We craft <span className="text-accent italic">intelligence</span> <br />
                         and digital strategy
                       </h2>
                       <p className="max-w-lg mx-auto text-slate-500 text-sm font-medium leading-relaxed">
@@ -401,10 +401,10 @@ export default function Home() {
                         <button 
                           key={prompt}
                           onClick={() => setInput(prompt)}
-                          className="glass-card hover:bg-white text-left p-5 rounded-[2rem] text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/30 transition-all border-slate-100 shadow-sm flex items-center justify-between group"
+                          className="glass-card hover:bg-white text-left p-5 rounded-[2rem] text-sm font-bold text-slate-600 hover:text-accent hover:border-accent/30 transition-all border-slate-100 shadow-sm flex items-center justify-between group"
                         >
                           {prompt}
-                          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-primary">→</span>
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-accent">→</span>
                         </button>
                       ))}
                     </div>
@@ -451,7 +451,7 @@ export default function Home() {
 
                         {isLastUserMsg && (
                           <div className="mt-2 flex flex-col items-end px-2">
-                             <span className="text-[10px] text-primary/60 font-semibold tracking-widest">
+                             <span className="text-[10px] text-accent/60 font-semibold tracking-widest">
                                 {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.charAt(0).toUpperCase() + botStatus.slice(1)) : "Transmitting"}
                              </span>
                           </div>
@@ -466,9 +466,9 @@ export default function Home() {
                         <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
                       </div>
                       <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_var(--primary-glow)]" />
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_var(--primary-glow)]" />
+                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />
+                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_var(--primary-glow)]" />
+                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_var(--primary-glow)]" />
                       </div>
                     </div>
                   )}
