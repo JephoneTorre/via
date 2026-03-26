@@ -60,14 +60,21 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
     }
     
     const queryLower = query.toLowerCase();
-    const words = queryLower.split(/\s+/).filter(w => w.length > 3);
+    const words = queryLower.split(/\s+/).filter(w => w.length > 2);
     
     const contextParts: string[] = [];
 
-    // Helper: Match record against keywords
+    // Helper: Match record against keywords with simple normalization
     const isMatch = (record: Record<string, unknown> | SopDocument) => {
       const target = JSON.stringify(record).toLowerCase();
-      return words.length === 0 || words.some(w => target.includes(w));
+      if (words.length === 0) return true;
+      
+      const normalizedTarget = target.replace(/(.)\1+/g, '$1');
+      return words.some(w => {
+        if (target.includes(w)) return true;
+        const normalizedW = w.replace(/(.)\1+/g, '$1');
+        return normalizedTarget.includes(normalizedW);
+      });
     };
 
     // PROCESS CONSOLIDATED CLIENT DATA
@@ -164,7 +171,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       const { data: assistantData } = await supabase
         .from("assistant")
         .select("*")
-        .limit(10);
+        .limit(100);
         
       if (assistantData && Array.isArray(assistantData)) {
         const matchedAssistants = assistantData.filter(isMatch).slice(0, 3);
