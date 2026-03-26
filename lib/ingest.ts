@@ -11,12 +11,12 @@ export async function ingestText(text: string, filename: string) {
 
     const chunks = chunkText(text, 1000);
     const supabase = createInternalClient();
-
-    let uploadedCount = 0;
-    for (const chunk of chunks) {
+    
+    // Parallelize embedding generation and database insertion to speed up processing
+    // and help prevent Vercel serverless function timeouts.
+    const uploadTasks = chunks.map(async (chunk) => {
       const embedding = await getEmbedding(chunk);
 
-      // Store primarily in SOP table per user request
       const { error } = await supabase.from("SOP").insert({
         content: chunk, 
         embedding: embedding,
@@ -31,8 +31,12 @@ export async function ingestText(text: string, filename: string) {
         console.error("Chunk Insert Error:", error);
         throw new Error(error.message);
       }
-      else uploadedCount++;
-    }
+      
+      return true;
+    });
+
+    const results = await Promise.all(uploadTasks);
+    const uploadedCount = results.length;
 
     return { success: true, chunks: uploadedCount };
   } catch (err: unknown) {

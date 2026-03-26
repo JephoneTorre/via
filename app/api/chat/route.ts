@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
     // 4. ASK N8N CHATBOT WORKFLOW (RAG)
     try {
-      const n8nWebhook = "https://n8n.heysnaply.com/webhook/101ed314-1e34-4b9b-a0e7-2bfafc9300f5";
+      const n8nWebhook = process.env.CHAT_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/101ed314-1e34-4b9b-a0e7-2bfafc9300f5";
       
       const prompt = `
 - MISSION: You are VIA, the VIP Scale automated assistant. Your goal is to provide accurate, COMPLETE information from the Supabase dataset.

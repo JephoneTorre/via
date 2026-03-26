@@ -1,5 +1,5 @@
-const OLLAMA_HOST = "http://127.0.0.1:11434"; 
-const EMBEDDING_MODEL = "nomic-embed-text:latest";
+const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://127.0.0.1:11434"; 
+const EMBEDDING_MODEL = process.env.OLLAMA_MODEL || "nomic-embed-text:latest";
 import { createInternalClient } from "@/supabase/server";
  
 export type SopDocument = {
@@ -18,13 +18,25 @@ export type RetrievalResult = {
 };
 export async function getEmbedding(text: string): Promise<number[]> {
   try {
-    const res = await fetch(`${OLLAMA_HOST}/api/embeddings`, {
+    // Priority: EMBEDDING_URL (n8n webhook) -> OLLAMA_HOST/api/embeddings
+    const targetUrl = process.env.EMBEDDING_URL || `${OLLAMA_HOST}/api/embeddings`;
+
+    const res = await fetch(targetUrl, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
     });
-    if (!res.ok) throw new Error("Ollama embedding failed");
+
+    if (!res.ok) throw new Error("Connection failed (Ollama/n8n unreachable)");
     const data = await res.json();
-    return data.embedding;
+    
+    // Support for Ollama {embedding: [...]}, n8n direct arrays, or nested data [0]
+    const vector = data.embedding || (Array.isArray(data) ? data : (data[0]?.embedding || data[0]));
+    
+    if (!vector || !Array.isArray(vector)) {
+      throw new Error("No valid vector data returned from API");
+    }
+    return vector;
   } catch (err) {
     console.error("Embedding Error:", err);
     throw err;
