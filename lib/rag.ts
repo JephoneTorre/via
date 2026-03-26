@@ -1,7 +1,21 @@
 const OLLAMA_HOST = "http://127.0.0.1:11434"; 
 const EMBEDDING_MODEL = "nomic-embed-text:latest";
 import { createInternalClient } from "@/supabase/server";
+ 
+export type SopDocument = {
+  id?: number;
+  content: string;
+  metadata?: {
+    source?: string;
+    type?: string;
+    [key: string]: any;
+  };
+};
 
+export type RetrievalResult = {
+  context: string;
+  detectedTopic: string | null;
+};
 export async function getEmbedding(text: string): Promise<number[]> {
   try {
     const res = await fetch(`${OLLAMA_HOST}/api/embeddings`, {
@@ -19,7 +33,7 @@ export async function getEmbedding(text: string): Promise<number[]> {
 
 const N8N_FETCH_URL = "https://n8n.heysnaply.com/webhook/fetch-all-data";
 
-export async function retrieveContext(query: string) {
+export async function retrieveContext(query: string): Promise<RetrievalResult> {
   try {
     console.log("RAG: Fetching consolidated data from n8n...");
     const res = await fetch(N8N_FETCH_URL);
@@ -38,10 +52,10 @@ export async function retrieveContext(query: string) {
     }
     
     // Check if the "data" array actually contains SOP documents instead of clients
-    const allItems = Array.isArray(actualData?.data) ? actualData.data : [];
-    const sopFromData = allItems.filter((i: any) => i.metadata?.type === "sop_document");
+    const allItems = Array.isArray(actualData?.data) ? (actualData.data as SopDocument[]) : [];
+    const sopFromData = allItems.filter((i: SopDocument) => i.metadata?.type === "sop_document");
     // If "data" is purely SOPs, then reset clients if they were wrongly guessed
-    if (sopFromData.length > 0 && clients === allItems && !allItems[0]?.name) {
+    if (sopFromData.length > 0 && clients === allItems && !(allItems[0] as any)?.name) {
        clients = [];
     }
     
@@ -51,7 +65,7 @@ export async function retrieveContext(query: string) {
     const contextParts: string[] = [];
 
     // Helper: Match record against keywords
-    const isMatch = (record: Record<string, unknown>) => {
+    const isMatch = (record: Record<string, unknown> | SopDocument) => {
       const target = JSON.stringify(record).toLowerCase();
       return words.length === 0 || words.some(w => target.includes(w));
     };
@@ -99,13 +113,28 @@ export async function retrieveContext(query: string) {
         const { data: directSOP } = await supabase
           .from("SOP")
           .select("content, metadata")
-          .limit(10); // Fetch recent or all if small
-          
+          .order("id") // Ensure chunks are in order
+          .limit(50); // Fetch more to allow matching across full docs
+
         if (directSOP && Array.isArray(directSOP)) {
-          const matchedDirectSOP = directSOP.filter(isMatch).slice(0, 5);
-          if (matchedDirectSOP.length > 0) {
-            contextParts.push(...matchedDirectSOP.map((s: any) => `[SOP CONTENT]: ${s.content}`));
-            console.log(`RAG: Found ${matchedDirectSOP.length} matching SOP docs from direct Supabase fallback.`);
+          const matchingSources = new Set<string>();
+
+          // Identify which documents (sources) match
+          directSOP.forEach((s: SopDocument) => {
+             if (isMatch(s)) {
+               const source = s.metadata?.source;
+               if (source) matchingSources.add(source);
+             }
+          });
+
+          // Fetch ALL chunks for the matched sources to avoid truncation
+          const completeSOPs = directSOP.filter((s: SopDocument) =>
+            s.metadata?.source && matchingSources.has(s.metadata.source)
+          );
+
+          if (completeSOPs.length > 0) {
+            contextParts.push(...completeSOPs.map((s: SopDocument) => `[SOP CONTENT - ${s.metadata?.source || 'Unknown Source'}]: ${s.content}`));
+            console.log(`RAG: Found ${completeSOPs.length} total chunks from ${matchingSources.size} matching sources.`);
           }
         }
       } catch (e) {
@@ -115,7 +144,7 @@ export async function retrieveContext(query: string) {
 
     // Handle standalone SOP if not nested (Fallback for old structure)
     // We check rootData, actualData, and specific keys like "SOP" or "Wrap SOP"
-    const standaloneSOPItems = [
+    const standaloneSOPItems: SopDocument[] = [
       ...(Array.isArray(rootData.SOP) ? rootData.SOP : []),
       ...(Array.isArray(actualData.SOP) ? actualData.SOP : []),
       ...(Array.isArray(actualData["Wrap SOP"]?.data) ? actualData["Wrap SOP"].data : []),

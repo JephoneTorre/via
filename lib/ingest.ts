@@ -35,8 +35,106 @@ export async function ingestText(text: string, filename: string) {
     }
 
     return { success: true, chunks: uploadedCount };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("INGESTION ERROR:", err);
-    return { error: err.message || "Failed to process content" };
+    return { error: errorMsg || "Failed to process content" };
+  }
+}
+
+/**
+ * Update an existing SOP document and its embedding.
+ */
+export async function updateSOP(id: number, content: string) {
+  try {
+    const supabase = createInternalClient();
+    const embedding = await getEmbedding(content);
+
+    const { error } = await supabase
+      .from("SOP")
+      .update({ 
+        content, 
+        embedding,
+        metadata: { 
+          updated_at: new Date().toISOString(),
+          is_edited: true
+        }
+      })
+      .eq("id", id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("UPDATE SOP ERROR:", err);
+    return { error: errorMsg };
+  }
+}
+
+/**
+ * Delete an SOP document.
+ */
+export async function deleteSOP(id: number) {
+  try {
+    const supabase = createInternalClient();
+    const { error } = await supabase.from("SOP").delete().eq("id", id);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("DELETE SOP ERROR:", err);
+    return { error: errorMsg };
+  }
+}
+
+/**
+ * Update an Assistant/Team Member.
+ */
+export async function updateAssistant(id: string, data: Partial<{ name: string; email: string; is_active: boolean; employment_type: string }>) {
+  try {
+    const supabase = createInternalClient();
+    const { error } = await supabase
+      .from("assistant")
+      .update(data)
+      .eq("id", id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("UPDATE ASSISTANT ERROR:", err);
+    return { error: errorMsg };
+  }
+}
+
+/**
+ * Delete a Team Member.
+ */
+export async function deleteAssistant(id: string) {
+  try {
+    const supabase = createInternalClient();
+    const { error } = await supabase.from("assistant").delete().eq("id", id);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("DELETE ASSISTANT ERROR:", err);
+    return { error: errorMsg };
+  }
+}
+
+/**
+ * Create a new team member.
+ */
+export async function createAssistant(data: { name: string; email: string; is_active: boolean; employment_type: string }) {
+  try {
+    const supabase = createInternalClient();
+    const { error } = await supabase.from("assistant").insert(data);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("CREATE ASSISTANT ERROR:", err);
+    return { error: errorMsg };
   }
 }

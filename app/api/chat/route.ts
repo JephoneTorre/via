@@ -21,13 +21,13 @@ export async function POST(req: Request) {
     /* RETRIEVE */
     const retrieval = await retrieveContext(message);
     let { context } = retrieval;
-    let detectedTopic = (retrieval as any).detectedTopic;
+    let detectedTopic = retrieval.detectedTopic;
 
     /* MEMORY RETRY */
     if (context === "NO_CONTEXT_FOUND" && lastTopic) {
       const retry = await retrieveContext(lastTopic + " " + message);
       context = retry.context;
-      detectedTopic = (retry as any).detectedTopic || lastTopic;
+      detectedTopic = retry.detectedTopic || lastTopic;
     }
 
     /* SAVE TOPIC */
@@ -38,15 +38,16 @@ export async function POST(req: Request) {
       const n8nWebhook = "https://n8n.heysnaply.com/webhook/101ed314-1e34-4b9b-a0e7-2bfafc9300f5";
       
       const prompt = `
-- MISSION: You are VIA, the VIP Scale automated assistant. Your goal is to provide accurate information from the Supabase dataset.
+- MISSION: You are VIA, the VIP Scale automated assistant. Your goal is to provide accurate, COMPLETE information from the Supabase dataset.
 - CRITICAL: NO INTRODUCTIONS. Output ONLY the information requested.
+- CRITICAL: NO SHORTCUTS. If the user asks for an SOP or policy, you MUST provide the FULL content including all steps, bullet points, and technical details.
 - CRITICAL: NO HALLUCINATIONS. Use ONLY the provided context. If information is missing, output "N/A" or "NO_INFO_FOUND".
 - CRITICAL: STRICT DATASET. If the user asks about something not in the context, inform them that you do not have that data in your secure protocols.
 - GUIDELINES:
   1. For CLIENT profiles, use the vertical structured format below.
   2. For TEAM MEMBERS (Assistants), use a structured list based on the provided context labels.
-  3. For GENERAL QUESTIONS (Policies, SOPs, Tasks), provide a clear, professional conversational response based ONLY on the context.
-  4. Use double newlines between every single line for clarity.
+  3. For GENERAL QUESTIONS (Policies, SOPs, Tasks), provide the FULL, RAW, COMPLETE content from the context. Do NOT summarize. Provide every single detail, step, and instruction found in the provided document chunks.
+  4. Use double newlines between every single line and section for clarity.
 
 CLIENT DATA TEMPLATE (Use ONLY if asking for client details):
 [Client Name]
@@ -95,10 +96,10 @@ ${message}
         text?: string;
         [key: string]: any; // Allow for other properties or array access like n8nResult[0]?.output
       }
-      const n8nResult: N8nWebhookResponse = await response.json();
+      const n8nResult = (await response.json()) as N8nWebhookResponse;
       
       // Extraction logic for n8n chatbot output
-      const reply = n8nResult.content || n8nResult.output || n8nResult.reply || n8nResult.text || (Array.isArray(n8nResult) && n8nResult[0]?.output) || JSON.stringify(n8nResult);
+      const reply = n8nResult.content || n8nResult.output || n8nResult.reply || n8nResult.text || (Array.isArray(n8nResult) && (n8nResult as any)[0]?.output) || JSON.stringify(n8nResult);
 
       return NextResponse.json({ reply: typeof reply === 'string' ? reply.trim() : reply });
     } catch (whError: unknown) { // Use 'unknown' for caught errors
