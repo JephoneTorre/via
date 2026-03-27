@@ -150,39 +150,71 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       contextParts.push(clientContext);
     }
 
-    // DIRECT SUPABASE FALLBACK FOR SOP (if n8n is missing it)
-    if (sopFromData.length === 0) {
-      try {
-        const supabase = createInternalClient();
-        const { data: directSOP } = await supabase
+    // 2. SEARCH SOP DOCUMENTS (Vector Search Fallback)
+    try {
+      const supabase = createInternalClient();
+      console.log("RAG: Performing vector search for SOPs...");
+      
+      const queryEmbedding = await getEmbedding(query);
+      
+      const { data: matchedSOPs, error: rpcError } = await supabase.rpc('match_sop', {
+        query_embedding: queryEmbedding,
+        match_threshold: 0.35,
+        match_count: 5
+      });
+
+      if (rpcError) throw rpcError;
+
+      if (matchedSOPs && matchedSOPs.length > 0) {
+        const sourceNames = new Set<string>();
+        matchedSOPs.forEach((m: any) => {
+          if (m.source_name) sourceNames.add(m.source_name);
+        });
+
+        // FETCH ALL CHUNKS FOR THE MATCHED SOURCES IN ORDER
+        const { data: allChunks, error: fetchError } = await supabase
           .from("SOP")
-          .select("content, metadata")
-          .order("id") // Ensure chunks are in order
-          .limit(50); // Fetch more to allow matching across full docs
+          .select("content, source_name, id, ai_title")
+          .in("source_name", Array.from(sourceNames))
+          .order("id", { ascending: true });
 
-        if (directSOP && Array.isArray(directSOP)) {
-          const matchingSources = new Set<string>();
+        if (fetchError) throw fetchError;
 
-          // Identify which documents (sources) match
-          directSOP.forEach((s: SopDocument) => {
-             if (isMatch(s)) {
-               const source = s.metadata?.source;
-               if (source) matchingSources.add(source);
-             }
+        if (allChunks && allChunks.length > 0) {
+          const docs: Record<string, { title: string, content: string[] }> = {};
+          allChunks.forEach(c => {
+            const name = c.source_name || "Unknown Source";
+            if (!docs[name]) {
+              docs[name] = { 
+                title: c.ai_title || name, 
+                content: [] 
+              };
+            }
+            docs[name].content.push(c.content);
           });
 
-          // Fetch ALL chunks for the matched sources to avoid truncation
-          const completeSOPs = directSOP.filter((s: SopDocument) =>
-            s.metadata?.source && matchingSources.has(s.metadata.source)
-          );
-
-          if (completeSOPs.length > 0) {
-            contextParts.push(...completeSOPs.map((s: SopDocument) => `[SOP CONTENT - ${s.metadata?.source || 'Unknown Source'}]: ${s.content}`));
-            console.log(`RAG: Found ${completeSOPs.length} total chunks from ${matchingSources.size} matching sources.`);
+          for (const source in docs) {
+            contextParts.push(`[SOP DOCUMENT: ${docs[source].title}]\n${docs[source].content.join("\n")}`);
           }
+          console.log(`RAG: Injected ${allChunks.length} chunks from ${sourceNames.size} matching SOP documents.`);
         }
-      } catch (e) {
-        console.error("Supabase fallback failed:", e);
+      }
+    } catch (e) {
+      console.error("Vector retrieval failed, trying keyword fallback:", e);
+      // Keyword fallback logic (old simplified version)
+      try {
+        const supabase = createInternalClient();
+        const { data: simpleSearch } = await supabase
+          .from("SOP")
+          .select("content, source_name")
+          .ilike("content", `%${query.split(' ')[0]}%`)
+          .limit(10);
+        
+        if (simpleSearch) {
+          contextParts.push(...simpleSearch.map(s => `[SOP CONTENT]: ${s.content}`));
+        }
+      } catch (innerE) {
+        console.error("Keyword fallback also failed:", innerE);
       }
     }
 

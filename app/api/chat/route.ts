@@ -38,35 +38,27 @@ export async function POST(req: Request) {
       const n8nWebhook = process.env.CHAT_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/101ed314-1e34-4b9b-a0e7-2bfafc9300f5";
       
       const prompt = `
-- MISSION: You are VIA, the VIP Scale automated assistant. Your goal is to provide accurate, COMPLETE information from the Supabase dataset.
-- CRITICAL: NO INTRODUCTIONS. Output ONLY the information requested.
-- CRITICAL: NO SHORTCUTS. If the user asks for an SOP or policy, you MUST provide the FULL content including all steps, bullet points, and technical details.
-- CRITICAL: NO HALLUCINATIONS. Use ONLY the provided context. If information is missing, output "N/A" or "NO_INFO_FOUND".
-- CRITICAL: STRICT DATASET. If the user asks about something not in the context, inform them that you do not have that data in your secure protocols.
-- GUIDELINES:
-  1. For CLIENT profiles, use the vertical structured format below.
-  2. For TEAM MEMBERS (Assistants), use a structured list based on the provided context labels.
-  3. For GENERAL QUESTIONS (Policies, SOPs, Tasks), provide the FULL, RAW, COMPLETE content from the context. Do NOT summarize. Provide every single detail, step, and instruction found in the provided document chunks.
-  4. Use double newlines between every single line and section for clarity.
+- MISSION: You are VIA, the VIP Scale technical interface. Your objective is to extract and display SPECIFIC requested data from the provided context.
+- CRITICAL: NO CONVERSATION. NO INTRODUCTIONS ("According to...", "Here is...", etc.). NO OUTRO.
+- CRITICAL: SELECTIVITY. If the user asks for a specific SOP or Protocol, output ONLY that SOP content. If they ask for a Client, output ONLY that Client profile. Do NOT mix unrelated context items.
+- CRITICAL: NO SUMMARIZATION. If the user asks for an SOP, you MUST provide the FULL, RAW text, every step, and every detail found in the context.
+- CRITICAL: FORMATTING. Use double newlines for spacing. Use bold headers for section titles.
 
-CLIENT DATA TEMPLATE (Use ONLY if asking for client details):
+ENTITY RULES:
+1. CLIENTS: Display using the vertical template below.
+2. SOPS/PROTOCOLS: Display the Title followed by the RAW content.
+3. TEAM: Display Name, Email, and Department details.
+
+CLIENT DATA TEMPLATE (Use ONLY for client requests):
 [Client Name]
 
 Status: [Value]
-
 Tracking: [Value]
-
 ClickUp: [Value]
-
 Project: [Value]
 
 --- RAW ANALYSIS & EXTENDED DETAILS ---
-
 [Value if asking for everything, else N/A]
-
-B-Roll Tags: [Value]
-
-SOP Documents: [Value]
 
 ----------------
 CONTEXT:
@@ -99,7 +91,13 @@ ${message}
       const n8nResult = (await response.json()) as N8nWebhookResponse;
       
       // Extraction logic for n8n chatbot output
-      const reply = n8nResult.content || n8nResult.output || n8nResult.reply || n8nResult.text || (Array.isArray(n8nResult) && (n8nResult as any)[0]?.output) || JSON.stringify(n8nResult);
+      const reply = 
+        n8nResult.content || 
+        n8nResult.output || 
+        n8nResult.reply || 
+        n8nResult.text || 
+        (Array.isArray(n8nResult) && (n8nResult[0]?.content || n8nResult[0]?.output || n8nResult[0]?.text)) || 
+        JSON.stringify(n8nResult);
 
       return NextResponse.json({ reply: typeof reply === 'string' ? reply.trim() : reply });
     } catch (whError: unknown) { // Use 'unknown' for caught errors
@@ -107,9 +105,9 @@ ${message}
       
       // Fallback to local LLM if webhook fails (optional, but safer)
       const prompt = `
-- MISSION: You are VIA, the VIP Scale automated assistant. Your goal is to provide data in a pure, structured vertical format.
-- CRITICAL: NO INTRODUCTIONS.
-- GUIDELINES: Use provided context below.
+- MISSION: You are VIA, the VIP Scale technical interface. Extract SPECIFIC requested data from the provided context.
+- CRITICAL: NO CONVERSATION. NO INTRODUCTIONS. Output ONLY the requested information.
+- SELECTIVITY: Do NOT mix unrelated context items (e.g. don't show clients when asking for SOPs).
 - CONTEXT: ${context}
 - QUESTION: ${message}
 `;

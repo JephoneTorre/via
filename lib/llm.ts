@@ -42,7 +42,8 @@ export async function askLLM(prompt: string): Promise<string> {
       };
 
       if (Array.isArray(data)) {
-        return extractContent(data[0]) || text;
+        const first = data[0];
+        return extractContent(first) || first?.content || first?.output || text;
       }
       return extractContent(data) || text;
     } catch {
