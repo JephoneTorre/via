@@ -1,5 +1,6 @@
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://127.0.0.1:11434"; 
 const EMBEDDING_MODEL = process.env.OLLAMA_MODEL || "nomic-embed-text:latest";
+import OpenAI from "openai";
 import { createInternalClient } from "@/supabase/server";
  
 export type SopDocument = {
@@ -18,27 +19,51 @@ export type RetrievalResult = {
 };
 export async function getEmbedding(text: string): Promise<number[]> {
   try {
-    // Priority: EMBEDDING_URL (n8n webhook) -> OLLAMA_HOST/api/embeddings
-    const targetUrl = process.env.EMBEDDING_URL || `${OLLAMA_HOST}/api/embeddings`;
+    const isVercel = !!process.env.VERCEL;
+    const openaiKey = process.env.OPENAI_API_KEY;
 
+    // 1. TRY OPENAI (Preferred for production/Vercel)
+    if (openaiKey) {
+      console.log(`[RAG] Using OpenAI for production embedding...`);
+      const openai = new OpenAI({ apiKey: openaiKey });
+      const embedding = await openai.embeddings.create({
+        model: "text-embedding-3-small", // High efficiency + low cost
+        input: text,
+      });
+      return embedding.data[0].embedding;
+    }
+
+    // 2. FALLBACK TO OLLAMA (Local default)
+    const targetUrl = process.env.EMBEDDING_URL || `${OLLAMA_HOST}/api/embeddings`;
+    
+    // Safety: If on Vercel and targetting 127.0.0.1, we KNOW it will fail.
+    if (isVercel && targetUrl.includes("127.0.0.1")) {
+      console.error("[RAG] ERROR: Vercel cannot connect to local Ollama (127.0.0.1). Please provide OPENAI_API_KEY or a public EMBEDDING_URL.");
+      throw new Error("Local Ollama is unreachable from Vercel. Please configure OPENAI_API_KEY in your Vercel Dashboard.");
+    }
+
+    console.log(`[RAG] Embedding Request to: ${targetUrl}`);
     const res = await fetch(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
     });
 
-    if (!res.ok) throw new Error("Connection failed (Ollama/n8n unreachable)");
+    if (!res.ok) {
+      console.error(`[RAG] Fetch Error (${res.status}): ${res.statusText}`);
+      throw new Error(`Embedding service unavailable (${res.status})`);
+    }
+
     const data = await res.json();
-    
-    // Support for Ollama {embedding: [...]}, n8n direct arrays, or nested data [0]
     const vector = data.embedding || (Array.isArray(data) ? data : (data[0]?.embedding || data[0]));
     
     if (!vector || !Array.isArray(vector)) {
       throw new Error("No valid vector data returned from API");
     }
+    
     return vector;
-  } catch (err) {
-    console.error("Embedding Error:", err);
+  } catch (err: any) {
+    console.error(`[RAG] GET_EMBEDDING_EXCEPTION:`, err.message);
     throw err;
   }
 }

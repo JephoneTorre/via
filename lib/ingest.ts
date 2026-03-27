@@ -10,33 +10,37 @@ export async function ingestText(text: string, filename: string) {
     if (!text) throw new Error("No text provided");
 
     const chunks = chunkText(text, 1000);
-    const supabase = createInternalClient();
+    // Ingestion is now handled by the n8n webhook
+    const INGEST_WEBHOOK_URL = process.env.INGEST_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/ingest-knowledge";
     
-    // Parallelize embedding generation and database insertion to speed up processing
-    // and help prevent Vercel serverless function timeouts.
-    const uploadTasks = chunks.map(async (chunk) => {
-      const embedding = await getEmbedding(chunk);
+    const batchSize = 10;
+    let uploadedCount = 0;
 
-      const { error } = await supabase.from("SOP").insert({
-        content: chunk, 
-        embedding: embedding,
-        metadata: { 
-          source: filename, 
-          type: "sop_document",
-          date: new Date().toISOString()
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
+      console.log(`[Ingest] Triggering n8n batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(chunks.length/batchSize)}...`);
+      
+      const batchTasks = batch.map(async (chunk) => {
+        const res = await fetch(INGEST_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: chunk,
+            filename: filename,
+            date: new Date().toISOString()
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`n8n Ingestion Webhook failed: ${res.statusText}`);
         }
+        
+        return true;
       });
 
-      if (error) {
-        console.error("Chunk Insert Error:", error);
-        throw new Error(error.message);
-      }
-      
-      return true;
-    });
-
-    const results = await Promise.all(uploadTasks);
-    const uploadedCount = results.length;
+      await Promise.all(batchTasks);
+      uploadedCount += batch.length;
+    }
 
     return { success: true, chunks: uploadedCount };
   } catch (err: unknown) {
