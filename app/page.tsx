@@ -34,7 +34,7 @@ export default function Home() {
   
   // UPLOAD QUEUE STATE
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
-  const isUploading = uploadQueue.some(t => t.status === "processing");
+
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -333,26 +333,7 @@ export default function Home() {
             </div>
           </a>
 
-          <label className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-accent hover:bg-white transition-all group relative border-slate-100 shadow-sm cursor-pointer ${isUploading ? "animate-pulse" : ""}`}>
-            <input 
-              type="file" 
-              accept=".pdf" 
-              multiple
-              className="hidden" 
-              onChange={(e) => {
-                if (e.target.files) handlePDFUpload(e.target.files);
-                e.target.value = ""; // Clear for re-upload
-              }}
-              disabled={isUploading}
-            />
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <div className="absolute left-16 px-4 py-2 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap pointer-events-none uppercase tracking-widest font-black shadow-2xl z-50">
-              {isUploading ? "Processing..." : "Bulk Upload Knowledge (PDF)"}
-              <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rotate-45" />
-            </div>
-          </label>
+
         </div>
 
         <div className="mt-auto flex flex-col items-center gap-6">

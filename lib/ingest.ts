@@ -54,14 +54,11 @@ export async function ingestText(text: string, filename: string) {
 export async function updateSOP(id: number, content: string, title?: string) {
   try {
     const supabase = createInternalClient();
-    const embedding = await getEmbedding(content);
-
     const { error } = await supabase
       .from("SOP")
       .update({ 
         content, 
         ai_title: title,
-        embedding,
         metadata: { 
           updated_at: new Date().toISOString(),
           is_edited: true
