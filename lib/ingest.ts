@@ -10,36 +10,34 @@ export async function ingestText(text: string, filename: string) {
     if (!text) throw new Error("No text provided");
 
     const chunks = chunkText(text, 1000);
-    // Ingestion is now handled by the n8n webhook
     const INGEST_WEBHOOK_URL = process.env.INGEST_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/ingest-knowledge";
-    
-    const batchSize = 10;
     let uploadedCount = 0;
 
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
-      console.log(`[Ingest] Triggering n8n batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(chunks.length/batchSize)}...`);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      // Fast, 0-cost title extraction for n8n base value
+      const baseTitle = chunk.split('\n')[0].slice(0, 60).replace(/[#*•○[\]]/g, "").trim() || filename;
       
-      const batchTasks = batch.map(async (chunk) => {
-        const res = await fetch(INGEST_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: chunk,
-            filename: filename,
-            date: new Date().toISOString()
-          }),
-        });
+      console.log(`[Ingest] Streaming Section ${i + 1}/${chunks.length} to n8n...`);
 
-        if (!res.ok) {
-          throw new Error(`n8n Ingestion Webhook failed: ${res.statusText}`);
-        }
-        
-        return true;
+      const res = await fetch(INGEST_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: chunk,
+          prompt: chunk, // Your llama3.1:8b node requirement
+          filename: filename,
+          source_name: filename,
+          ai_title: baseTitle,
+          date: new Date().toISOString()
+        }),
       });
 
-      await Promise.all(batchTasks);
-      uploadedCount += batch.length;
+      if (!res.ok) {
+        const errorBody = await res.text().catch(() => "");
+        throw new Error(`n8n failed (${res.status}): ${errorBody || res.statusText}`);
+      }
+      uploadedCount++;
     }
 
     return { success: true, chunks: uploadedCount };
@@ -53,7 +51,7 @@ export async function ingestText(text: string, filename: string) {
 /**
  * Update an existing SOP document and its embedding.
  */
-export async function updateSOP(id: number, content: string) {
+export async function updateSOP(id: number, content: string, title?: string) {
   try {
     const supabase = createInternalClient();
     const embedding = await getEmbedding(content);
@@ -62,6 +60,7 @@ export async function updateSOP(id: number, content: string) {
       .from("SOP")
       .update({ 
         content, 
+        ai_title: title,
         embedding,
         metadata: { 
           updated_at: new Date().toISOString(),

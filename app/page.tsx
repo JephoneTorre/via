@@ -14,14 +14,27 @@ type Msg = {
   timestamp: Date;
 };
 
+export type UploadTask = {
+  id: string;
+  filename: string;
+  status: "idle" | "processing" | "completed" | "error";
+  progress: number;
+  error?: string;
+  totalChunks?: number;
+};
+
 export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [botStatus, setBotStatus] = useState<"idle" | "waiting" | "seen" | "analyzing" | "typing">("idle");
   const [lastMessageSeen, setLastMessageSeen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [activeView, setActiveView] = useState<"chat" | "dataset">("chat");
+  const [datasetTab, setDatasetTab] = useState<"sop" | "team" | "queue">("sop");
+  
+  // UPLOAD QUEUE STATE
+  const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
+  const isUploading = uploadQueue.some(t => t.status === "processing");
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -192,22 +205,32 @@ export default function Home() {
     setBotStatus("idle");
   }
 
-  async function handlePDFUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+  async function handlePDFUpload(files: FileList | File[]) {
     if (!files || files.length === 0) return;
 
-    setIsUploading(true);
-    let totalChunks = 0;
+    // 1. ADD ALL FILES TO QUEUE FIRST
+    const newTasks: UploadTask[] = Array.from(files).map(f => ({
+      id: Math.random().toString(36).substring(7),
+      filename: f.name,
+      status: "idle",
+      progress: 0
+    }));
     
-    try {
-      // 1. DYNAMIC IMPORT PDFJS
-      const pdfjs = await import("pdfjs-dist");
-      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    setUploadQueue(prev => [...newTasks, ...prev]);
+    if (activeView !== "dataset") setActiveView("dataset");
+    setDatasetTab("queue"); // Auto-switch to queue tab
 
-      for (const file of Array.from(files)) {
-        console.log(`Processing ${file.name}...`);
-        
-        // 2. READ PDF FILE
+    // 2. DYNAMIC IMPORT PDFJS
+    const pdfjs = await import("pdfjs-dist");
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+    for (const task of newTasks) {
+      const file = Array.from(files).find(f => f.name === task.filename);
+      if (!file) continue;
+
+      setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "processing" } : t));
+
+      try {
         const arrayBuffer = await file.arrayBuffer();
         const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
@@ -217,40 +240,39 @@ export default function Home() {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
           const pageText = textContent.items
-            .map((item: any) => item.str)
+            .map((item: any) => (typeof (item as any).str === "string" ? (item as any).str : ""))
             .join(" ");
           fullText += pageText + "\n";
+          
+          setUploadQueue(prev => prev.map(t => t.id === task.id ? { 
+            ...t, 
+            progress: Math.floor((i / pdf.numPages) * 100 * 0.5) // First 50% is parsing
+          } : t));
         }
 
         const cleanText = fullText.replace(/\s+/g, " ").trim();
-        if (!cleanText) {
-          console.warn(`Could not extract text from ${file.name}`);
-          continue;
-        }
+        if (!cleanText) throw new Error("Could not extract text from document");
 
-        // 3. SEND TO SERVER ACTION
+        console.log(`[Ingest] Chunking and processing ${file.name}...`);
         const res = await ingestText(cleanText, file.name);
         if (res.success) {
-          totalChunks += res.chunks || 0;
+          setUploadQueue(prev => prev.map(t => t.id === task.id ? { 
+            ...t, 
+            status: "completed", 
+            progress: 100,
+            totalChunks: res.chunks 
+          } : t));
         } else {
-          throw new Error(`Upload failed for ${file.name}: ${res.error}`);
+          throw new Error(res.error);
         }
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Upload failed";
+        setUploadQueue(prev => prev.map(t => t.id === task.id ? { 
+          ...t, 
+          status: "error", 
+          error: errorMsg
+        } : t));
       }
-      
-      alert(`Successfully processed ${files.length} documents (${totalChunks} total chunks) into VIP Scale database.`);
-      
-      // If we are in dataset view, we should probably refresh it, but it uses its own state/effect
-      if (activeView === "dataset") {
-        window.location.reload(); // Simple refresh for now to update the dataset view
-      }
-
-    } catch (err: any) {
-      console.error("PDF UPLOAD ERROR:", err);
-      alert("Error uploading PDF: " + err.message);
-    } finally {
-      setIsUploading(false);
-      // Reset input
-      e.target.value = "";
     }
   }
 
@@ -311,14 +333,16 @@ export default function Home() {
             </div>
           </a>
 
-          {/* UPLOAD PDF BUTTON */}
           <label className={`w-12 h-12 rounded-2xl glass-card flex items-center justify-center text-slate-400 hover:text-accent hover:bg-white transition-all group relative border-slate-100 shadow-sm cursor-pointer ${isUploading ? "animate-pulse" : ""}`}>
             <input 
               type="file" 
               accept=".pdf" 
               multiple
               className="hidden" 
-              onChange={handlePDFUpload}
+              onChange={(e) => {
+                if (e.target.files) handlePDFUpload(e.target.files);
+                e.target.value = ""; // Clear for re-upload
+              }}
               disabled={isUploading}
             />
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -510,7 +534,12 @@ export default function Home() {
             </footer>
           </>
         ) : (
-          <KnowledgeBase />
+          <KnowledgeBase 
+            uploadQueue={uploadQueue} 
+            onClearQueue={() => setUploadQueue([])}
+            onUpload={handlePDFUpload}
+            initialTab={datasetTab}
+          />
         )}
       </div>
     </div>

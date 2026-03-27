@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/supabase/client";
 import { updateSOP, deleteSOP, updateAssistant, deleteAssistant, createAssistant } from "@/lib/ingest";
+import { UploadTask } from "@/app/page";
 
 type SOPDoc = {
   id: number;
   content: string;
+  ai_title?: string;
   metadata: {
     type?: string;
     source?: string;
@@ -25,15 +27,33 @@ type Assistant = {
   employment_type: string;
 };
 
-export default function KnowledgeBase() {
+export default function KnowledgeBase({ 
+  uploadQueue = [], 
+  onClearQueue,
+  onUpload,
+  initialTab = "sop"
+}: { 
+  uploadQueue?: UploadTask[], 
+  onClearQueue: () => void,
+  onUpload: (files: FileList | File[]) => void,
+  initialTab?: "sop" | "team" | "queue"
+}) {
   const [sops, setSops] = useState<SOPDoc[]>([]);
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"sop" | "team">("sop");
+  const [activeTab, setActiveTab] = useState<"sop" | "team" | "queue">(initialTab);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync tab if initialTab changes (e.g. from parent)
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   
   // Editing state
   const [editingId, setEditingId] = useState<number | string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [editTitle, setEditTitle] = useState("");
   const [editAssistant, setEditAssistant] = useState<Partial<Assistant>>({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -63,11 +83,12 @@ export default function KnowledgeBase() {
   const handleEditSop = (doc: SOPDoc) => {
     setEditingId(doc.id);
     setEditContent(doc.content);
+    setEditTitle(doc.ai_title || "");
   };
 
   const handleSaveSop = useCallback(async (id: number) => {
     setIsSaving(true);
-    const res = await updateSOP(id, editContent);
+    const res = await updateSOP(id, editContent, editTitle);
     if (res.success) {
       setEditingId(null);
       await fetchData();
@@ -75,7 +96,7 @@ export default function KnowledgeBase() {
       alert("Error updating SOP: " + res.error);
     }
     setIsSaving(false);
-  }, [editContent, fetchData]);
+  }, [editContent, editTitle, fetchData]);
 
   const handleDeleteSop = useCallback(async (id: number) => {
     if (!confirm("Are you sure you want to delete this document? This cannot be undone.")) return;
@@ -162,6 +183,15 @@ export default function KnowledgeBase() {
           >
             Team Members
           </button>
+          <button 
+            onClick={() => setActiveTab("queue")}
+            className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === "queue" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-white text-slate-400 hover:text-slate-600 border border-slate-200"}`}
+          >
+            Bulk Ingestion
+            {uploadQueue.some(t => t.status === "processing") && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent rounded-full animate-ping" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -217,8 +247,20 @@ export default function KnowledgeBase() {
                         </div>
                       </div>
 
+                      {(doc.ai_title || doc.metadata?.ai_title) && (
+                        <h2 className="text-base font-black text-slate-900 uppercase tracking-tight mb-3">
+                          {String(doc.ai_title || doc.metadata?.ai_title)}
+                        </h2>
+                      )}
+
                       {editingId === doc.id ? (
                         <div className="space-y-4">
+                          <input 
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            className="w-full px-4 py-2 rounded-xl border border-primary/20 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 font-black uppercase tracking-tight"
+                            placeholder="Document Title"
+                          />
                           <textarea 
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
@@ -261,7 +303,7 @@ export default function KnowledgeBase() {
                   </div>
                 )}
               </>
-            ) : (
+            ) : activeTab === "team" ? (
               <>
                 <div className="flex justify-end mb-2">
                    <button 
@@ -349,6 +391,134 @@ export default function KnowledgeBase() {
                   ))}
                 </div>
               </>
+            ) : (
+              <div className="space-y-6 max-w-4xl mx-auto">
+                {/* UPLOAD ZONE */}
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (e.dataTransfer.files) onUpload(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`relative group cursor-pointer transition-all duration-500 overflow-hidden rounded-[3rem] border-2 border-dashed flex flex-col items-center justify-center p-12 bg-white/40 backdrop-blur-sm ${
+                    isDragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-slate-200 hover:border-primary/30 hover:bg-white"
+                  }`}
+                >
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    multiple 
+                    accept=".pdf"
+                    className="hidden" 
+                    onChange={(e) => e.target.files && onUpload(e.target.files)}
+                  />
+                  
+                  <div className={`w-20 h-20 rounded-3xl mb-6 flex items-center justify-center transition-all duration-500 ${
+                    isDragging ? "bg-primary text-white rotate-12" : "bg-slate-50 text-slate-300 group-hover:bg-primary/10 group-hover:text-primary group-hover:rotate-6"
+                  }`}>
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">Drop New Protocols</h3>
+                  <p className="text-slate-500 text-xs font-bold uppercase tracking-widest text-center max-w-sm leading-loose">
+                    Drag and drop your PDF documentation here to synchronize with the <span className="text-primary">VIP Scale Distributed Dataset</span>.
+                  </p>
+                  
+                  <div className="mt-8 flex gap-4">
+                     <div className="px-4 py-1.5 rounded-full border border-slate-100 bg-white text-[9px] font-black uppercase text-slate-400 tracking-widest">Supports Multi-PDF</div>
+                     <div className="px-4 py-1.5 rounded-full border border-slate-100 bg-white text-[9px] font-black uppercase text-slate-400 tracking-widest">Auto-Vectorizing</div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-10 border-t border-slate-100 mb-8">
+                  <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Transmission Logs</h2>
+                  {uploadQueue.length > 0 && (
+                    <button 
+                      onClick={onClearQueue}
+                      className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors"
+                    >
+                      Clear Log History
+                    </button>
+                  )}
+                </div>
+
+                {uploadQueue.length === 0 ? (
+                  <div className="text-center py-20 bg-slate-50/50 rounded-[3rem] border border-slate-100">
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[11px]">No active transmissions detected.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {uploadQueue.map((task) => (
+                      <div key={task.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-6 hover:shadow-md transition-all group">
+                        <div className={`w-14 h-14 rounded-[2rem] flex items-center justify-center flex-shrink-0 transition-colors ${
+                          task.status === "completed" ? "bg-green-50 text-green-500" :
+                          task.status === "error" ? "bg-red-50 text-red-500" :
+                          "bg-primary/10 text-primary"
+                        }`}>
+                          {task.status === "completed" ? (
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : task.status === "error" ? (
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          ) : (
+                            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-black text-slate-900 uppercase tracking-tight truncate pr-4 text-sm">{task.filename}</h3>
+                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                              task.status === "completed" ? "bg-green-50 text-green-500" :
+                              task.status === "error" ? "bg-red-50 text-red-500" :
+                              "bg-primary/5 text-primary"
+                            }`}>
+                              {task.status === "processing" ? `Syncing ${task.progress}%` : task.status}
+                            </span>
+                          </div>
+                          
+                          <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full transition-all duration-700 rounded-full ${
+                                task.status === "completed" ? "bg-green-500" :
+                                task.status === "error" ? "bg-red-500" :
+                                "bg-primary shadow-[0_0_12px_rgba(var(--primary-rgb),0.4)]"
+                              }`}
+                              style={{ width: `${task.progress}%` }}
+                            />
+                          </div>
+
+                          {task.error && (
+                            <div className="mt-3 flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                              <p className="text-[10px] text-red-600 font-bold uppercase tracking-tight">
+                                Protocol Breach: {task.error}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {task.status === "completed" && (
+                            <div className="mt-3 flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                              <p className="text-[10px] text-green-600 font-bold uppercase tracking-tight">
+                                Secure Storage: {task.totalChunks} vectors distributed across SOP network.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

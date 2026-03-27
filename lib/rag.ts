@@ -253,3 +253,37 @@ export function chunkText(text: string, size = 1000): string[] {
   if (current) chunks.push(current.trim());
   return chunks;
 }
+
+/**
+ * Generate a punchy title from text content.
+ */
+export async function generateTitle(text: string): Promise<string> {
+  try {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) throw new Error("Missing API Key");
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "Summarize the text into a functional, professional title (max 5 words). Examples: 'Output in Task History', 'PDF Rebranding', 'SOP: Meta Ad Creation'. Return ONLY the title text without quotes or punctuation."
+        },
+        {
+          role: "user",
+          content: text.slice(0, 3000)
+        }
+      ],
+      max_tokens: 20
+    });
+
+    return response.choices[0].message.content?.replace(/["']/g, "").trim() || "Vectorized Protocol";
+  } catch (err: any) {
+    console.warn(`[RAG] Title generation failed: ${err.message}. Using extraction fallback.`);
+    // FALLBACK: Extract the first meaningful line (e.g., heading or first sentence)
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+    const firstLine = lines[0]?.slice(0, 50).replace(/[#*•○[\]]/g, "").trim();
+    return firstLine || "New SOP Protocol";
+  }
+}
