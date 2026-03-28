@@ -1,6 +1,6 @@
 export async function askLLM(prompt: string): Promise<string> {
   try {
-    const webhookUrl = process.env.CHAT_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/101ed314-1e34-4b9b-a0e7-2bfafc9300f5";
+    const webhookUrl = process.env.CHAT_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/VIA";
 
     const res = await fetch(webhookUrl, {
       method: "POST",

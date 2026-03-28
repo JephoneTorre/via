@@ -69,11 +69,18 @@ export async function getEmbedding(text: string): Promise<number[]> {
 }
 
 const N8N_FETCH_URL = "https://n8n.heysnaply.com/webhook/fetch-all-data";
+const N8N_SOP_FETCH_URL = "https://n8n.heysnaply.com/webhook/FETCH-SOP";
 
 export async function retrieveContext(query: string): Promise<RetrievalResult> {
   try {
-    console.log("RAG: Fetching consolidated data from n8n...");
-    const res = await fetch(N8N_FETCH_URL);
+    const queryLower = query.toLowerCase();
+    const sopKeywords = ["sop", "protocol", "manual", "guide", "procedure", "steps", "step", "how to", "instruction", "checklist", "policy", "briefing", "workflow", "process", "setup", "optimize", "task", "section"];
+    const isSopRequest = sopKeywords.some(kw => queryLower.includes(kw));
+
+    const targetUrl = isSopRequest ? N8N_SOP_FETCH_URL : N8N_FETCH_URL;
+    console.log(`RAG: Query is ${isSopRequest ? 'SOP' : 'GENERAL'} related. Routing to: ${targetUrl}`);
+
+    const res = await fetch(targetUrl);
     if (!res.ok) throw new Error("n8n data fetch failed");
     
     const rootData = await res.json();
@@ -83,38 +90,44 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
     
     // Now look for the "data" or "clients" array within that object
     // Handle both direct "data" key and nested data under "Merge All Data1" or "clients"
-    let clients = Array.isArray(actualData?.data) ? actualData.data : (actualData?.clients || []);
-    if (clients.length === 0 && actualData["Merge All Data1"]?.data) {
-      clients = actualData["Merge All Data1"].data;
-    }
+    const allItems = Array.isArray(actualData?.data) ? actualData.data : [];
     
-    // Check if the "data" array actually contains SOP documents instead of clients
-    const allItems = Array.isArray(actualData?.data) ? (actualData.data as SopDocument[]) : [];
-    const sopFromData = allItems.filter((i: SopDocument) => i.metadata?.type === "sop_document");
-    // If "data" is purely SOPs, then reset clients if they were wrongly guessed
-    if (sopFromData.length > 0 && clients === allItems && !(allItems[0] as any)?.name) {
-       clients = [];
-    }
-    
-    const queryLower = query.toLowerCase();
+    // Determine context parts based on request type
+    const contextParts: string[] = [];
     const words = queryLower.split(/\s+/).filter(w => w.length > 2);
     
-    const contextParts: string[] = [];
-
-    // Helper: Match record against keywords with simple normalization
+    // Match record against keywords (Improved to handle specific phrases)
     const isMatch = (record: Record<string, unknown> | SopDocument) => {
       const target = JSON.stringify(record).toLowerCase();
       if (words.length === 0) return true;
       
+      // Check for exact phrase matches (e.g. "Step 6")
+      if (queryLower.includes("step") || queryLower.includes("section")) {
+        const match = words.every(w => target.includes(w));
+        if (match) return true;
+      }
+
       const normalizedTarget = target.replace(/(.)\1+/g, '$1');
-      return words.some(w => {
+      const matchCount = words.filter(w => {
         if (target.includes(w)) return true;
         const normalizedW = w.replace(/(.)\1+/g, '$1');
         return normalizedTarget.includes(normalizedW);
-      });
+      }).length;
+      return matchCount >= Math.min(words.length, 2);
     };
 
-    // PROCESS CONSOLIDATED CLIENT DATA
+    // 1. PROCESS SOP DATA (If SOP request, prioritize this)
+    if (isSopRequest) {
+      const matchedSOPs = allItems.filter(isMatch).slice(0, 15);
+      for (const s of matchedSOPs) {
+        const title = s.ai_title || s.title || "SOP Procedure";
+        contextParts.push(`[SOP DOCUMENT: ${title}]\n${s.content}`);
+      }
+      console.log(`RAG: Injected ${matchedSOPs.length} SOPs from dedicated workflow.`);
+    }
+
+    // 2. PROCESS CLIENT DATA (If general request, or as fallback)
+    const clients = !isSopRequest ? allItems : [];
     const matchedClients = clients
       .filter(isMatch)
       .sort((a: any, b: any) => {
@@ -123,7 +136,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
         const bScore = (b.face_data ? 1 : 0) + (b.body_data ? 1 : 0) + (b.persona_details ? 1 : 0);
         return bScore - aScore;
       })
-      .slice(0, 5);
+      .slice(0, 15);
 
     for (const c of matchedClients) {
       const clientName = c.name || c.client || "Unknown Client";
@@ -160,22 +173,28 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       const { data: matchedSOPs, error: rpcError } = await supabase.rpc('match_sop', {
         query_embedding: queryEmbedding,
         match_threshold: 0.35,
-        match_count: 5
+        match_count: 15
       });
 
       if (rpcError) throw rpcError;
 
       if (matchedSOPs && matchedSOPs.length > 0) {
         const sourceNames = new Set<string>();
+        // Rank sources by match density and only take the top 3 to prevent noise
+        const sourceScores: Record<string, number> = {};
         matchedSOPs.forEach((m: any) => {
-          if (m.source_name) sourceNames.add(m.source_name);
+          if (m.source_name) sourceScores[m.source_name] = (sourceScores[m.source_name] || 0) + 1;
         });
+        const topSources = Object.entries(sourceScores)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(e => e[0]);
 
-        // FETCH ALL CHUNKS FOR THE MATCHED SOURCES IN ORDER
+        // FETCH ALL CHUNKS FOR THE TOP SOURCES IN ORDER
         const { data: allChunks, error: fetchError } = await supabase
           .from("SOP")
           .select("content, source_name, id, ai_title")
-          .in("source_name", Array.from(sourceNames))
+          .in("source_name", topSources)
           .order("id", { ascending: true });
 
         if (fetchError) throw fetchError;
@@ -207,7 +226,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
         const { data: simpleSearch } = await supabase
           .from("SOP")
           .select("content, source_name")
-          .ilike("content", `%${query.split(' ')[0]}%`)
+          .ilike("content", `%${query.replace(/\s+/g, '%')}%`)
           .limit(10);
         
         if (simpleSearch) {
@@ -218,23 +237,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       }
     }
 
-    // Handle standalone SOP if not nested (Fallback for old structure)
-    // We check rootData, actualData, and specific keys like "SOP" or "Wrap SOP"
-    const standaloneSOPItems: SopDocument[] = [
-      ...(Array.isArray(rootData.SOP) ? rootData.SOP : []),
-      ...(Array.isArray(actualData.SOP) ? actualData.SOP : []),
-      ...(Array.isArray(actualData["Wrap SOP"]?.data) ? actualData["Wrap SOP"].data : []),
-      ...(Array.isArray(actualData["Wrap SOP"]) ? actualData["Wrap SOP"] : []),
-      ...sopFromData // Already extracted from actualData.data if type was sop_document
-    ];
-
-    if (standaloneSOPItems.length > 0) {
-      const standaloneSOP = standaloneSOPItems.filter(isMatch).slice(0, 5);
-      contextParts.push(...standaloneSOP.map((s: Record<string, unknown>) => `[SOP CONTENT]: ${s.content}`));
-      console.log(`RAG: Found ${standaloneSOP.length} matching standalone SOP docs.`);
-    }
-
-    // NEW: FETCH ASSISTANT/TEAM DATA
+    // 4. FETCH ASSISTANT/TEAM DATA (Always check team context)
     try {
       const supabase = createInternalClient();
       const { data: assistantData } = await supabase
