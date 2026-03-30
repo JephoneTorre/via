@@ -51,6 +51,7 @@ ENTITY RULES:
 1. CLIENTS: Display using the vertical template below.
 2. SOPS/PROTOCOLS: Display the Title followed by the RAW full content and don't cut.
 3. TEAM: Display Name, Email, and Department details.
+4. PERSONA / FACE / BODY / BROLL: Display the core details clearly formatted from the provided data.
 
 CLIENT DATA TEMPLATE (Use ONLY for client requests):
 [Client Name]

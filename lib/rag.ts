@@ -9,7 +9,7 @@ export type SopDocument = {
   metadata?: {
     source?: string;
     type?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 };
 
@@ -74,23 +74,57 @@ const N8N_SOP_FETCH_URL = "https://n8n.heysnaply.com/webhook/FETCH-SOP";
 export async function retrieveContext(query: string): Promise<RetrievalResult> {
   try {
     const queryLower = query.toLowerCase();
+    
+    // Keyword Definitions
     const sopKeywords = ["sop", "protocol", "manual", "guide", "procedure", "steps", "step", "how to", "instruction", "checklist", "policy", "briefing", "workflow", "process", "setup", "optimize", "task", "section"];
-    const isSopRequest = sopKeywords.some(kw => queryLower.includes(kw));
+    const personaKeywords = ["persona", "target audience", "demographic", "avatar", "ideal client"];
+    const faceKeywords = ["face", "facial", "hook", "face analysis", "face data"];
+    const bodyKeywords = ["body", "physique", "posture", "body analysis", "body data"];
+    const brollKeywords = ["broll", "b-roll", "b roll", "footage", "tags"];
+    const clientKeywords = ["client", "clients", "brand", "brands", "customer", "account", "project status"];
 
-    const targetUrl = isSopRequest ? N8N_SOP_FETCH_URL : N8N_FETCH_URL;
-    console.log(`RAG: Query is ${isSopRequest ? 'SOP' : 'GENERAL'} related. Routing to: ${targetUrl}`);
+    // Determine Target Workflow
+    let targetUrl = N8N_FETCH_URL;
+    let requestType = "GENERAL";
+
+    if (sopKeywords.some(kw => queryLower.includes(kw))) {
+      targetUrl = N8N_SOP_FETCH_URL;
+      requestType = "SOP";
+    } else if (personaKeywords.some(kw => queryLower.includes(kw))) {
+      targetUrl = "https://n8n.heysnaply.com/webhook/persona";
+      requestType = "PERSONA";
+    } else if (faceKeywords.some(kw => queryLower.includes(kw))) {
+      targetUrl = "https://n8n.heysnaply.com/webhook/face";
+      requestType = "FACE";
+    } else if (bodyKeywords.some(kw => queryLower.includes(kw))) {
+      targetUrl = "https://n8n.heysnaply.com/webhook/body";
+      requestType = "BODY";
+    } else if (brollKeywords.some(kw => queryLower.includes(kw))) {
+      targetUrl = "https://n8n.heysnaply.com/webhook/broll";
+      requestType = "BROLL";
+    } else if (clientKeywords.some(kw => queryLower.includes(kw))) {
+      targetUrl = "https://n8n.heysnaply.com/webhook/clientschat";
+      requestType = "CLIENT";
+    }
+
+    console.log(`RAG: Query is ${requestType} related. Routing to: ${targetUrl}`);
 
     const res = await fetch(targetUrl);
     if (!res.ok) throw new Error("n8n data fetch failed");
     
     const rootData = await res.json();
     
-    // N8N often returns an array if using "All Incoming Items"
-    const actualData = Array.isArray(rootData) ? rootData[0] : rootData;
-    
-    // Now look for the "data" or "clients" array within that object
-    // Handle both direct "data" key and nested data under "Merge All Data1" or "clients"
-    const allItems = Array.isArray(actualData?.data) ? actualData.data : [];
+    // Robust parsing for different n8n webhook payload structures
+    let allItems: any[] = [];
+    if (Array.isArray(rootData) && rootData.length > 0 && Array.isArray(rootData[0].data)) {
+        allItems = rootData[0].data;
+    } else if (rootData && Array.isArray(rootData.data)) {
+        allItems = rootData.data;
+    } else if (Array.isArray(rootData)) {
+        allItems = rootData;
+    } else if (rootData && typeof rootData === 'object') {
+        allItems = [rootData];
+    }
     
     // Determine context parts based on request type
     const contextParts: string[] = [];
@@ -116,8 +150,8 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       return matchCount >= Math.min(words.length, 2);
     };
 
-    // 1. PROCESS SOP DATA (If SOP request, prioritize this)
-    if (isSopRequest) {
+    // 1. PROCESS SOP DATA
+    if (requestType === "SOP") {
       const matchedSOPs = allItems.filter(isMatch).slice(0, 15);
       for (const s of matchedSOPs) {
         const title = s.ai_title || s.title || "SOP Procedure";
@@ -126,41 +160,52 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       console.log(`RAG: Injected ${matchedSOPs.length} SOPs from dedicated workflow.`);
     }
 
-    // 2. PROCESS CLIENT DATA (If general request, or as fallback)
-    const clients = !isSopRequest ? allItems : [];
-    const matchedClients = clients
-      .filter(isMatch)
-      .sort((a: any, b: any) => {
-        // Prioritize clients with analysis data (face/body)
-        const aScore = (a.face_data ? 1 : 0) + (a.body_data ? 1 : 0) + (a.persona_details ? 1 : 0);
-        const bScore = (b.face_data ? 1 : 0) + (b.body_data ? 1 : 0) + (b.persona_details ? 1 : 0);
-        return bScore - aScore;
-      })
-      .slice(0, 15);
-
-    for (const c of matchedClients) {
-      const clientName = c.name || c.client || "Unknown Client";
-      let clientContext = `[CLIENT DATA]:\nName: ${clientName}\nStatus: ${c.isActive ? 'Active' : 'Inactive'}\nTracking: ${c.tracker || 'N/A'}`;
-      
-      if (c.clickup_id) clientContext += `\nClickUp: ${c.clickup_id}`;
-      if (c.vps) clientContext += `\nProject: ${c.vps}`;
-
-      // Append Nested Details if they exist (New Workflow Structure)
-      if (c.persona_details) clientContext += `\nPERSONA: ${c.persona_details}`;
-      if (c.face_data?.face_analysis) clientContext += `\nFACE ANALYSIS: ${c.face_data.face_analysis}`;
-      if (c.body_data?.body_analysis) clientContext += `\nBODY ANALYSIS: ${c.body_data.body_analysis}`;
-      
-      if (Array.isArray(c.broll_tags) && c.broll_tags.length > 0) {
-        const tags = c.broll_tags.map((b: Record<string, unknown>) => b.tags).join(", ");
-        clientContext += `\nB-ROLL TAGS: ${tags}`;
+    // 2. PROCESS SPECIFIC DATA TYPES
+    if (["PERSONA", "FACE", "BODY", "BROLL"].includes(requestType)) {
+      const matched = allItems.filter(isMatch).slice(0, 15);
+      for (const item of matched) {
+         contextParts.push(`[${requestType} DATA]:\n${JSON.stringify(item, null, 2)}`);
       }
+      console.log(`RAG: Injected ${matched.length} ${requestType} records`);
+    }
 
-      if (Array.isArray(c.sop_docs) && c.sop_docs.length > 0) {
-        const docs = c.sop_docs.map((s: Record<string, unknown>) => s.content).join("\n");
-        clientContext += `\nSOP DOCUMENTS:\n${docs}`;
+    // 3. PROCESS CLIENT DATA (If general request, or explicit client request)
+    if (requestType === "CLIENT" || requestType === "GENERAL") {
+      const matchedClients = allItems
+        .filter(isMatch)
+        .sort((a: any, b: any) => {
+          // Prioritize clients with analysis data
+          const aScore = (a.face_data ? 1 : 0) + (a.body_data ? 1 : 0) + (a.persona_details ? 1 : 0);
+          const bScore = (b.face_data ? 1 : 0) + (b.body_data ? 1 : 0) + (b.persona_details ? 1 : 0);
+          return bScore - aScore;
+        })
+        .slice(0, 15);
+
+      for (const c of matchedClients) {
+        const clientName = c.name || c.client || "Unknown Client";
+        let clientContext = `[CLIENT DATA]:\nName: ${clientName}\nStatus: ${c.isActive ? 'Active' : 'Inactive'}\nTracking: ${c.tracker || 'N/A'}`;
+        
+        if (c.clickup_id) clientContext += `\nClickUp: ${c.clickup_id}`;
+        if (c.vps) clientContext += `\nProject: ${c.vps}`;
+
+        // Append Nested Details if they exist
+        if (c.persona_details) clientContext += `\nPERSONA: ${c.persona_details}`;
+        if (c.face_data?.face_analysis) clientContext += `\nFACE ANALYSIS: ${c.face_data.face_analysis}`;
+        if (c.body_data?.body_analysis) clientContext += `\nBODY ANALYSIS: ${c.body_data.body_analysis}`;
+        
+        if (Array.isArray(c.broll_tags) && c.broll_tags.length > 0) {
+          const tags = c.broll_tags.map((b: Record<string, unknown>) => b.tags).join(", ");
+          clientContext += `\nB-ROLL TAGS: ${tags}`;
+        }
+
+        if (Array.isArray(c.sop_docs) && c.sop_docs.length > 0) {
+          const docs = c.sop_docs.map((s: Record<string, unknown>) => s.content).join("\n");
+          clientContext += `\nSOP DOCUMENTS:\n${docs}`;
+        }
+
+        contextParts.push(clientContext);
       }
-
-      contextParts.push(clientContext);
+      console.log(`RAG: Found ${matchedClients.length} matching client profiles.`);
     }
 
     // 2. SEARCH SOP DOCUMENTS (Vector Search Fallback)
@@ -259,8 +304,6 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
     }
 
     const context = contextParts.join("\n\n---\n\n");
-    console.log(`RAG: Found ${matchedClients.length} matching client profiles.`);
-
     return { 
       context: context || "NO_CONTEXT_FOUND",
       detectedTopic: words[0] || null
