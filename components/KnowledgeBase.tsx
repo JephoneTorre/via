@@ -224,12 +224,7 @@ export default function KnowledgeBase({
           >
             SOP Documents
           </button>
-          <button 
-            onClick={() => setActiveTab("team")}
-            className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all ${activeTab === "team" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-white text-slate-400 hover:text-slate-600 border border-slate-200"}`}
-          >
-            Team Members
-          </button>
+
           <button 
             onClick={() => setActiveTab("queue")}
             className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === "queue" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-white text-slate-400 hover:text-slate-600 border border-slate-200"}`}
