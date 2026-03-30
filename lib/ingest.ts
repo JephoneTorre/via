@@ -1,5 +1,6 @@
 "use server";
 import { createInternalClient } from "@/supabase/server";
+import { createClient as createDocployClient } from "@supabase/supabase-js";
 import { getEmbedding, chunkText } from "./rag";
 
 /**
@@ -53,9 +54,15 @@ export async function ingestText(text: string, filename: string) {
  */
 export async function updateSOP(id: number, content: string, title?: string) {
   try {
-    const supabase = createInternalClient();
+    let supabase = createInternalClient();
+    const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
+    const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
+    if (docployUrl && docployKey) {
+       supabase = createDocployClient(docployUrl, docployKey);
+    }
+
     const { error } = await supabase
-      .from("SOP")
+      .from("SOP_VIA")
       .update({ 
         content, 
         ai_title: title,
@@ -76,12 +83,20 @@ export async function updateSOP(id: number, content: string, title?: string) {
 }
 
 /**
- * Delete an SOP document.
+ * Delete an SOP document by source name.
  */
-export async function deleteSOP(id: number) {
+export async function deleteSOP(source_name: string) {
   try {
-    const supabase = createInternalClient();
-    const { error } = await supabase.from("SOP").delete().eq("id", id);
+    if (!source_name) throw new Error("No source name provided");
+    
+    let supabase = createInternalClient();
+    const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
+    const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
+    if (docployUrl && docployKey) {
+       supabase = createDocployClient(docployUrl, docployKey);
+    }
+
+    const { error } = await supabase.from("SOP_VIA").delete().eq("source_name", source_name);
     if (error) throw error;
     return { success: true };
   } catch (err: unknown) {

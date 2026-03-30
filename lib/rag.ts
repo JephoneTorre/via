@@ -2,6 +2,7 @@ const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
 const EMBEDDING_MODEL = process.env.OLLAMA_MODEL || "nomic-embed-text:latest";
 import OpenAI from "openai";
 import { createInternalClient } from "@/supabase/server";
+import { createClient as createDocployClient } from "@supabase/supabase-js";
  
 export type SopDocument = {
   id?: number;
@@ -210,7 +211,13 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
 
     // 2. SEARCH SOP DOCUMENTS (Vector Search Fallback)
     try {
-      const supabase = createInternalClient();
+      let supabase = createInternalClient();
+      const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
+      const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
+      if (docployUrl && docployKey) {
+         supabase = createDocployClient(docployUrl, docployKey);
+      }
+
       console.log("RAG: Performing vector search for SOPs...");
       
       const queryEmbedding = await getEmbedding(query);
@@ -237,7 +244,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
 
         // FETCH ALL CHUNKS FOR THE TOP SOURCES IN ORDER
         const { data: allChunks, error: fetchError } = await supabase
-          .from("SOP")
+          .from("SOP_VIA")
           .select("content, source_name, id, ai_title")
           .in("source_name", topSources)
           .order("id", { ascending: true });
@@ -267,9 +274,15 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       console.error("Vector retrieval failed, trying keyword fallback:", e);
       // Keyword fallback logic (old simplified version)
       try {
-        const supabase = createInternalClient();
+        let supabase = createInternalClient();
+        const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
+        const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
+        if (docployUrl && docployKey) {
+           supabase = createDocployClient(docployUrl, docployKey);
+        }
+
         const { data: simpleSearch } = await supabase
-          .from("SOP")
+          .from("SOP_VIA")
           .select("content, source_name")
           .ilike("content", `%${query.replace(/\s+/g, '%')}%`)
           .limit(10);

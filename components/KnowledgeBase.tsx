@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/supabase/client";
+import { createClient as createDocployClient } from "@supabase/supabase-js";
 import { updateSOP, deleteSOP, updateAssistant, deleteAssistant, createAssistant } from "@/lib/ingest";
 import { UploadTask } from "@/app/page";
 
 type SOPDoc = {
   id: number;
+  source_name?: string;
   content: string;
   ai_title?: string;
   metadata: {
@@ -41,6 +43,7 @@ export default function KnowledgeBase({
   const [sops, setSops] = useState<SOPDoc[]>([]);
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"sop" | "team" | "queue">(initialTab);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,27 +53,55 @@ export default function KnowledgeBase({
     setActiveTab(initialTab);
   }, [initialTab]);
   
-  // Editing state
   const [editingId, setEditingId] = useState<number | string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editAssistant, setEditAssistant] = useState<Partial<Assistant>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
+  const toggleFolder = (folderName: string) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderName]: !prev[folderName]
+    }));
+  };
+
+  const groupedSops = sops.reduce((acc, doc) => {
+    const sourceName = doc.source_name || (doc.metadata?.source as string) || "Unknown Document";
+    if (!acc[sourceName]) acc[sourceName] = [];
+    acc[sourceName].push(doc);
+    return acc;
+  }, {} as Record<string, SOPDoc[]>);
 
   const supabase = createClient();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      setErrorMsg(null);
+      const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL;
+      const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY;
+      const sopClient = (docployUrl && docployKey) 
+        ? createDocployClient(docployUrl, docployKey) 
+        : supabase;
+
       const [sopRes, assistantRes] = await Promise.all([
-        supabase.from("SOP").select("*").order("created_at", { ascending: false }),
+        sopClient.from("SOP_VIA").select("*").order("created_at", { ascending: false }),
         supabase.from("assistant").select("*").order("name")
       ]);
 
-      if (sopRes.data) setSops(sopRes.data);
+      if (sopRes.error) {
+        console.error("SOP Fetch Error:", sopRes.error);
+        setErrorMsg(sopRes.error.message || JSON.stringify(sopRes.error));
+      } else if (sopRes.data) {
+        setSops(sopRes.data);
+      }
+
       if (assistantRes.data) setAssistants(assistantRes.data);
-    } catch (err) {
-      console.error("Fetch Error:", err);
+    } catch (err: any) {
+      console.error("Fetch Catch Error:", err);
+      setErrorMsg(err.message || "Unknown error occurred while fetching.");
     } finally {
       setLoading(false);
     }
@@ -98,9 +129,13 @@ export default function KnowledgeBase({
     setIsSaving(false);
   }, [editContent, editTitle, fetchData]);
 
-  const handleDeleteSop = useCallback(async (id: number) => {
-    if (!confirm("Are you sure you want to delete this document? This cannot be undone.")) return;
-    const res = await deleteSOP(id);
+  const handleDeleteSop = useCallback(async (sourceName: string) => {
+    if (!sourceName) {
+       alert("Document source name is missing. Cannot delete.");
+       return;
+    }
+    if (!confirm(`Are you sure you want to delete all segments from "${sourceName}"? This cannot be undone.`)) return;
+    const res = await deleteSOP(sourceName);
     if (res.success) {
       await fetchData();
     } else {
@@ -205,98 +240,135 @@ export default function KnowledgeBase({
           <div className="grid grid-cols-1 gap-6">
             {activeTab === "sop" ? (
               <>
-                {sops.length > 0 ? (
-                  sops.map((doc) => (
-                    <div key={doc.id} className="glass-card bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-primary/60 bg-primary/5 px-3 py-1 rounded-full border border-primary/10">
-                            {String(doc.metadata?.type || "Document").replace("_", " ")}
-                          </span>
-                          {doc.metadata?.is_edited && (
-                            <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-                              Edited
-                            </span>
-                          )}
+                {Object.keys(groupedSops).length > 0 ? (
+                  Object.entries(groupedSops).map(([sourceName, docs]) => {
+                    const isExpanded = expandedFolders[sourceName];
+                    return (
+                      <div key={sourceName} className="glass-card bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm transition-all group relative">
+                        {/* Folder Header */}
+                        <div className="flex justify-between items-center cursor-pointer" onClick={() => toggleFolder(sourceName)}>
+                           <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h2 className="text-base font-black text-slate-900 tracking-tight">
+                                  {sourceName}
+                                </h2>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                                  {docs.length} Segments
+                                </p>
+                              </div>
+                           </div>
+                           
+                           <div className="flex items-center gap-4">
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); handleDeleteSop(sourceName); }}
+                               className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                               title="Delete Entire Document"
+                             >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                             </button>
+                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
+                               <svg className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                               </svg>
+                             </div>
+                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">
-                            {new Date(doc.created_at).toLocaleDateString()} • ID: {doc.id}
-                          </span>
-                          
-                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
-                               onClick={() => handleEditSop(doc)}
-                               className="p-1.5 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-primary transition-colors"
-                               title="Edit Document"
-                            >
-                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                               </svg>
-                            </button>
-                            <button 
-                               onClick={() => handleDeleteSop(doc.id)}
-                               className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                               title="Delete Document"
-                            >
-                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                               </svg>
-                            </button>
+
+                        {/* Expanded Content (Chunks) */}
+                        <div className={`grid transition-all duration-300 ${isExpanded ? "grid-rows-[1fr] mt-6 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                          <div className="overflow-hidden space-y-4">
+                            {docs.map(doc => (
+                               <div key={doc.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100/50 flex-1 relative group/chunk">
+                                 <div className="flex justify-between items-start mb-4">
+                                   <div className="flex items-center gap-3">
+                                     <span className="text-[10px] font-black uppercase tracking-widest text-primary/60 bg-primary/5 px-3 py-1 rounded-full border border-primary/10">
+                                       {String(doc.metadata?.type || "Document").replace("_", " ")}
+                                     </span>
+                                     {doc.metadata?.is_edited && (
+                                       <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                                         Edited
+                                       </span>
+                                     )}
+                                   </div>
+                                   <div className="flex items-center gap-4">
+                                     <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">
+                                       {new Date(doc.created_at).toLocaleDateString()} • ID: {doc.id}
+                                     </span>
+                                     
+                                     <div className="flex items-center gap-2 opacity-0 group-hover/chunk:opacity-100 transition-opacity">
+                                       <button 
+                                          onClick={() => handleEditSop(doc)}
+                                          className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-primary transition-colors"
+                                          title="Edit Segment"
+                                       >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                          </svg>
+                                       </button>
+                                     </div>
+                                   </div>
+                                 </div>
+
+                                 {(doc.ai_title || doc.metadata?.ai_title) && (
+                                   <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-2">
+                                     {String(doc.ai_title || doc.metadata?.ai_title)}
+                                   </h2>
+                                 )}
+
+                                 {editingId === doc.id ? (
+                                   <div className="space-y-4">
+                                     <input 
+                                       value={editTitle}
+                                       onChange={(e) => setEditTitle(e.target.value)}
+                                       className="w-full px-4 py-2 rounded-xl border border-primary/20 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 font-black uppercase tracking-tight"
+                                       placeholder="Segment Title"
+                                     />
+                                     <textarea 
+                                       value={editContent}
+                                       onChange={(e) => setEditContent(e.target.value)}
+                                       className="w-full min-h-[150px] p-4 rounded-xl border border-primary/20 bg-white text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 font-medium"
+                                       placeholder="Update segment content..."
+                                     />
+                                     <div className="flex justify-end gap-3">
+                                       <button 
+                                         onClick={() => setEditingId(null)}
+                                         className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-200 transition-all"
+                                       >
+                                         Cancel
+                                       </button>
+                                       <button 
+                                         onClick={() => handleSaveSop(doc.id)}
+                                         disabled={isSaving}
+                                         className="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-primary text-white shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                                       >
+                                         {isSaving ? "Saving..." : "Save Changes"}
+                                       </button>
+                                     </div>
+                                   </div>
+                                 ) : (
+                                   <p className="text-slate-600 text-[13px] leading-relaxed line-clamp-2 group-hover/chunk:line-clamp-none transition-all">
+                                     {doc.content}
+                                   </p>
+                                 )}
+                               </div>
+                            ))}
                           </div>
                         </div>
                       </div>
-
-                      {(doc.ai_title || doc.metadata?.ai_title) && (
-                        <h2 className="text-base font-black text-slate-900 uppercase tracking-tight mb-3">
-                          {String(doc.ai_title || doc.metadata?.ai_title)}
-                        </h2>
-                      )}
-
-                      {editingId === doc.id ? (
-                        <div className="space-y-4">
-                          <input 
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            className="w-full px-4 py-2 rounded-xl border border-primary/20 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 font-black uppercase tracking-tight"
-                            placeholder="Document Title"
-                          />
-                          <textarea 
-                            value={editContent}
-                            onChange={(e) => setEditContent(e.target.value)}
-                            className="w-full min-h-[150px] p-4 rounded-2xl border border-primary/20 bg-slate-50 text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 font-medium"
-                            placeholder="Update SOP content..."
-                          />
-                          <div className="flex justify-end gap-3">
-                            <button 
-                              onClick={() => setEditingId(null)}
-                              className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all"
-                            >
-                              Cancel
-                            </button>
-                            <button 
-                              onClick={() => handleSaveSop(doc.id)}
-                              disabled={isSaving}
-                              className="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-primary text-white shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-                            >
-                              {isSaving ? "Saving..." : "Save Changes"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-slate-700 text-[14px] leading-relaxed line-clamp-3 group-hover:line-clamp-none transition-all">
-                          {doc.content}
-                        </p>
-                      )}
-
-                      <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                         <span>Source: {doc.metadata?.source || "Unknown"}</span>
-                         <span className={doc.metadata?.is_edited ? "text-primary" : "text-green-500"}>
-                           {doc.metadata?.is_edited ? "Re-Vectorized" : "Vectorized"}
-                         </span>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
+                ) : errorMsg ? (
+                  <div className="text-center py-20 bg-red-50/50 rounded-[3rem] border-2 border-dashed border-red-200">
+                    <p className="text-red-500 font-bold tracking-widest text-sm mb-2">SUPABASE ERROR DETECTED:</p>
+                    <p className="text-slate-700 font-mono text-xs">{errorMsg}</p>
+                  </div>
                 ) : (
                   <div className="text-center py-20 bg-white/40 rounded-[3rem] border-2 border-dashed border-slate-200">
                     <p className="text-slate-400 font-bold uppercase tracking-widest">No documentation found in secure storage.</p>
