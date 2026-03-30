@@ -27,11 +27,21 @@ export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [botStatus, setBotStatus] = useState<"idle" | "waiting" | "seen" | "analyzing" | "typing">("idle");
+  const [statusIndex, setStatusIndex] = useState(0);
   const [lastMessageSeen, setLastMessageSeen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [activeView, setActiveView] = useState<"chat" | "dataset">("chat");
   const [datasetTab, setDatasetTab] = useState<"sop" | "team" | "queue">("sop");
   
+  const loadingStatuses = [
+    "Searching knowledge base...",
+    "Extracting matching documents...",
+    "Analyzing strategic data...",
+    "Generating insight...",
+    "Refining response structure...",
+    "Almost ready..."
+  ];
+
   // UPLOAD QUEUE STATE
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
 
@@ -72,6 +82,18 @@ export default function Home() {
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, botStatus]);
+
+  // ROTATING LOADING TEXT
+  useEffect(() => {
+    if (botStatus !== "typing") {
+      setStatusIndex(0); 
+      return;
+    }
+    const interval = setInterval(() => {
+      setStatusIndex(prev => Math.min(prev + 1, loadingStatuses.length - 1));
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [botStatus]);
 
   // BACKGROUND ANIMATION
   useEffect(() => {
@@ -467,13 +489,18 @@ export default function Home() {
 
                   {botStatus === "typing" && (
                     <div className="flex items-start gap-4 animate-pulse">
-                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card border border-white/10 p-1.5">
+                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 glass-card mt-1 border border-slate-200 shadow-lg p-1.5 bg-white">
                         <Image src="/icon/vip.png" alt="VIA" width={32} height={32} className="object-contain" />
                       </div>
-                      <div className="glass-card rounded-2xl rounded-tl-sm px-5 py-4 flex gap-1.5 items-center bg-white/5">
-                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce shadow-[0_0_8px_var(--primary-glow)]" />
-                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_var(--primary-glow)]" />
-                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_var(--primary-glow)]" />
+                      <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-sm px-5 py-4 flex flex-col gap-3 shadow-sm min-w-[180px]">
+                        <div className="flex gap-1.5 items-center">
+                          <div className="w-2 h-2 bg-accent/60 rounded-full animate-bounce" />
+                          <div className="w-2 h-2 bg-accent/60 rounded-full animate-bounce [animation-delay:0.2s]" />
+                          <div className="w-2 h-2 bg-accent/60 rounded-full animate-bounce [animation-delay:0.4s]" />
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest transition-opacity duration-500">
+                           {loadingStatuses[statusIndex]}
+                        </span>
                       </div>
                     </div>
                   )}

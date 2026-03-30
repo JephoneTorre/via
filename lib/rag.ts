@@ -153,12 +153,12 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
 
     // 1. PROCESS SOP DATA
     if (requestType === "SOP") {
-      const matchedSOPs = allItems.filter(isMatch).slice(0, 15);
+      const matchedSOPs = allItems.filter(isMatch).slice(0, 2); // Extremely strict slice to save LLM tokens!
       for (const s of matchedSOPs) {
         const title = s.ai_title || s.title || "SOP Procedure";
         contextParts.push(`[SOP DOCUMENT: ${title}]\n${s.content}`);
       }
-      console.log(`RAG: Injected ${matchedSOPs.length} SOPs from dedicated workflow.`);
+      console.log(`RAG: Injected ${matchedSOPs.length} SOP chunks from dedicated workflow.`);
     }
 
     // 2. PROCESS SPECIFIC DATA TYPES
@@ -220,75 +220,48 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
 
       console.log("RAG: Performing vector search for SOPs...");
       
-      const queryEmbedding = await getEmbedding(query);
-      
-      const { data: matchedSOPs, error: rpcError } = await supabase.rpc('match_sop', {
-        query_embedding: queryEmbedding,
-        match_threshold: 0.35,
-        match_count: 15
-      });
-
-      if (rpcError) throw rpcError;
-
-      if (matchedSOPs && matchedSOPs.length > 0) {
-        const sourceNames = new Set<string>();
-        // Rank sources by match density and only take the top 3 to prevent noise
-        const sourceScores: Record<string, number> = {};
-        matchedSOPs.forEach((m: any) => {
-          if (m.source_name) sourceScores[m.source_name] = (sourceScores[m.source_name] || 0) + 1;
+      // ONLY RUN VECTOR SEARCH IF NO OTHER SOP CONTEXT WAS FOUND! 
+      // Massive token savings for the LLM!
+      if (requestType !== "SOP" || contextParts.length === 0) {
+        const queryEmbedding = await getEmbedding(query);
+        
+        const { data: matchedSOPs, error: rpcError } = await supabase.rpc('match_sop', {
+          query_embedding: queryEmbedding,
+          match_threshold: 0.35,
+          match_count: 2  // SLICE DOWN TO 2 TO SAVE TOKENS
         });
-        const topSources = Object.entries(sourceScores)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(e => e[0]);
 
-        // FETCH ALL CHUNKS FOR THE TOP SOURCES IN ORDER
-        const { data: allChunks, error: fetchError } = await supabase
-          .from("SOP_VIA")
-          .select("content, source_name, id, ai_title")
-          .in("source_name", topSources)
-          .order("id", { ascending: true });
+        if (rpcError) throw rpcError;
 
-        if (fetchError) throw fetchError;
-
-        if (allChunks && allChunks.length > 0) {
-          const docs: Record<string, { title: string, content: string[] }> = {};
-          allChunks.forEach(c => {
-            const name = c.source_name || "Unknown Source";
-            if (!docs[name]) {
-              docs[name] = { 
-                title: c.ai_title || name, 
-                content: [] 
-              };
-            }
-            docs[name].content.push(c.content);
+        if (matchedSOPs && matchedSOPs.length > 0) {
+          matchedSOPs.forEach((m: any) => {
+             const title = m.ai_title || m.source_name || "SOP Procedure";
+             contextParts.push(`[SOP DOCUMENT: ${title}]\n${m.content}`);
           });
-
-          for (const source in docs) {
-            contextParts.push(`[SOP DOCUMENT: ${docs[source].title}]\n${docs[source].content.join("\n")}`);
-          }
-          console.log(`RAG: Injected ${allChunks.length} chunks from ${sourceNames.size} matching SOP documents.`);
+          console.log(`RAG: Injected ${matchedSOPs.length} precise chunks from Vector Search.`);
         }
       }
     } catch (e) {
       console.error("Vector retrieval failed, trying keyword fallback:", e);
       // Keyword fallback logic (old simplified version)
       try {
-        let supabase = createInternalClient();
-        const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
-        const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
-        if (docployUrl && docployKey) {
-           supabase = createDocployClient(docployUrl, docployKey);
-        }
+        if (requestType !== "SOP" || contextParts.length === 0) {
+          let supabase = createInternalClient();
+          const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
+          const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
+          if (docployUrl && docployKey) {
+             supabase = createDocployClient(docployUrl, docployKey);
+          }
 
-        const { data: simpleSearch } = await supabase
-          .from("SOP_VIA")
-          .select("content, source_name")
-          .ilike("content", `%${query.replace(/\s+/g, '%')}%`)
-          .limit(10);
-        
-        if (simpleSearch) {
-          contextParts.push(...simpleSearch.map(s => `[SOP CONTENT]: ${s.content}`));
+          const { data: simpleSearch } = await supabase
+            .from("SOP_VIA")
+            .select("content, source_name")
+            .ilike("content", `%${query.replace(/\s+/g, '%')}%`)
+            .limit(2);  // SLICE DOWN TO 2 TO SAVE TOKENS
+          
+          if (simpleSearch) {
+            contextParts.push(...simpleSearch.map(s => `[SOP CONTENT]: ${s.content}`));
+          }
         }
       } catch (innerE) {
         console.error("Keyword fallback also failed:", innerE);
