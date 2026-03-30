@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/supabase/client";
 import { createClient as createDocployClient } from "@supabase/supabase-js";
 import { updateSOP, deleteSOP, updateAssistant, deleteAssistant, createAssistant } from "@/lib/ingest";
+import { fetchDocploySOPs } from "@/lib/fetchSOPs";
 import { UploadTask } from "@/app/page";
 
 type SOPDoc = {
@@ -82,20 +83,31 @@ export default function KnowledgeBase({
       setErrorMsg(null);
       const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL;
       const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY;
-      const sopClient = (docployUrl && docployKey) 
-        ? createDocployClient(docployUrl, docployKey) 
-        : supabase;
 
-      const [sopRes, assistantRes] = await Promise.all([
-        sopClient.from("SOP_VIA").select("*").order("created_at", { ascending: false }),
-        supabase.from("assistant").select("*").order("name")
-      ]);
+      let sopRes, assistantRes;
+      
+      // SERVER ACTION BYPASS (avoids Browser Mixed Content and CORS errors)
+      try {
+         const [sopData, assistantResponse] = await Promise.all([
+           (docployUrl && docployKey) 
+              ? fetchDocploySOPs() // Using secure server-side Proxy!
+              : supabase.from("SOP_VIA").select("*").order("created_at", { ascending: false }).then(r => r.data),
+           
+           supabase.from("assistant").select("*").order("name")
+         ]);
+         
+         sopRes = { data: sopData, error: null };
+         assistantRes = assistantResponse;
+      } catch (err: unknown) {
+         sopRes = { data: null, error: err };
+         assistantRes = { data: [], error: null };
+      }
 
       if (sopRes.error) {
         console.error("SOP Fetch Error:", sopRes.error);
-        setErrorMsg(sopRes.error.message || JSON.stringify(sopRes.error));
+        setErrorMsg((sopRes.error as any).message || JSON.stringify(sopRes.error));
       } else if (sopRes.data) {
-        setSops(sopRes.data);
+        setSops(sopRes.data as SOPDoc[]);
       }
 
       if (assistantRes.data) setAssistants(assistantRes.data);
