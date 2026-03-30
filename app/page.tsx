@@ -453,11 +453,7 @@ export default function Home() {
                   </svg>
                 </button>
               </div>
-              <div className="max-w-4xl mx-auto mt-4">
-                <p className="text-[9px] text-center text-slate-400 uppercase tracking-[0.3em] font-black">
-                  VIA &copy; 2026 VIP scale
-                </p>
-              </div>
+
             </footer>
           </>
         ) : (
