@@ -32,6 +32,9 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [activeView, setActiveView] = useState<"chat" | "dataset">("chat");
   const [datasetTab, setDatasetTab] = useState<"sop" | "team" | "queue">("sop");
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [lastRequestCancelled, setLastRequestCancelled] = useState(false);
   
   const loadingStatuses = [
     "Searching knowledge base...",
@@ -100,21 +103,59 @@ export default function Home() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const forceStop = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setBotStatus("idle");
+      setLastRequestCancelled(true);
+    }
+  };
+
+  const deleteMessage = (id: string) => {
+    if (botStatus !== "idle") forceStop();
+    setMessages(prev => prev.filter(m => m.id !== id));
+  };
+
+  const startEdit = (msg: Msg) => {
+    if (botStatus !== "idle") forceStop();
+    setInput(msg.text);
+    setEditingId(msg.id);
+  };
+
   async function sendMessage() {
     if (!input.trim() || botStatus !== "idle") return;
 
     const userText = input;
-    const userMsgId = Math.random().toString(36).substring(7);
-    setInput("");
+    const currentEditingId = editingId;
     
-    const newUserMsg: Msg = { 
-      id: userMsgId,
-      role: "user", 
-      text: userText, 
-      timestamp: new Date() 
-    };
+    // Clear state
+    setInput("");
+    setEditingId(null);
+    setLastRequestCancelled(false);
+    
+    const controller = new AbortController();
+    setAbortController(controller);
 
-    setMessages(prev => [...prev, newUserMsg]);
+    if (currentEditingId) {
+      // If editing, find the message and update it
+      setMessages(prev => {
+        const index = prev.findIndex(m => m.id === currentEditingId);
+        if (index === -1) return prev;
+        // Remove subsequent messages (assistant reply)
+        return [...prev.slice(0, index), { ...prev[index], text: userText, timestamp: new Date() }];
+      });
+    } else {
+      const userMsgId = Math.random().toString(36).substring(7);
+      const newUserMsg: Msg = { 
+        id: userMsgId,
+        role: "user", 
+        text: userText, 
+        timestamp: new Date() 
+      };
+      setMessages(prev => [...prev, newUserMsg]);
+    }
+
     setLastMessageSeen(true);
     setBotStatus("typing");
     
@@ -123,6 +164,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userText }),
+        signal: controller.signal,
       });
 
       if (!res.ok) throw new Error("Connection failed");
@@ -137,7 +179,11 @@ export default function Home() {
         timestamp: new Date()
       }]);
 
-    } catch {
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.log("Fetch aborted");
+        return;
+      }
       setMessages(prev => [
         ...prev,
         { 
@@ -147,9 +193,10 @@ export default function Home() {
           timestamp: new Date()
         },
       ]);
+    } finally {
+      setBotStatus("idle");
+      setAbortController(null);
     }
-
-    setBotStatus("idle");
   }
 
   async function handlePDFUpload(files: FileList | File[]) {
@@ -372,9 +419,8 @@ export default function Home() {
                             </div>
                           )}
 
-                          <div className="flex flex-col">
-                            <div
-                              className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed
+                          <div className="flex flex-col">                            <div
+                              className={`px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed relative group/msg
                               ${
                                 m.role === "user"
                                   ? "message-user text-white rounded-tr-sm"
@@ -387,18 +433,56 @@ export default function Home() {
                                 </div> : 
                                 <span>{m.text}</span>
                               }
+
+                              {/* ACTIONS */}
+                              {m.role === "user" && (
+                                <div className={`absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 transition-opacity ${
+                                  (isLastUserMsg && botStatus !== "idle") ? "opacity-100" : "opacity-0 group-hover/msg:opacity-100"
+                                }`}>
+                                  <button 
+                                    onClick={() => startEdit(m)}
+                                    className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-accent transition-colors shadow-sm"
+                                    title="Edit message"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                    </svg>
+                                  </button>
+                                  <button 
+                                    onClick={() => deleteMessage(m.id)}
+                                    className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-red-500 transition-colors shadow-sm"
+                                    title="Delete message"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                             
-                            <span className={`text-[9px] text-slate-400 mt-2 font-bold tracking-widest uppercase px-2 ${m.role === "user" ? "text-right" : "text-left"}`}>
-                              {formatTime(m.timestamp)}
-                            </span>
+                            <div className={`flex items-center gap-2 mt-2 px-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                               <span className="text-[9px] text-slate-400 font-bold tracking-widest uppercase">
+                                  {formatTime(m.timestamp)}
+                               </span>
+                               {editingId === m.id && (
+                                 <span className="text-[9px] text-accent font-black uppercase tracking-widest animate-pulse">Editing...</span>
+                               )}
+                            </div>
                           </div>
                         </div>
 
+
                         {isLastUserMsg && (
                           <div className="mt-2 flex flex-col items-end px-2">
-                             <span className="text-[10px] text-accent/60 font-semibold tracking-widest">
-                                {lastMessageSeen ? (botStatus === "idle" ? "Confirmed" : botStatus.charAt(0).toUpperCase() + botStatus.slice(1)) : "Transmitting"}
+                             <span className={`text-[10px] font-semibold tracking-widest ${lastRequestCancelled ? "text-red-400" : "text-accent/60"}`}>
+                                {lastRequestCancelled 
+                                  ? "Cancelled" 
+                                  : (lastMessageSeen 
+                                      ? (botStatus === "idle" ? "Confirmed" : botStatus.charAt(0).toUpperCase() + botStatus.slice(1)) 
+                                      : "Transmitting"
+                                    )
+                                }
                              </span>
                           </div>
                         )}
@@ -436,22 +520,45 @@ export default function Home() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKey}
-                  placeholder="Type your strategic inquiry here..."
-                  className="flex-1 bg-transparent text-slate-900 py-3 px-8 outline-none border-none text-[15px] placeholder:text-slate-300 font-semibold"
+                  placeholder={editingId ? "Edit your strategy..." : "Type your strategic inquiry here..."}
+                  className={`flex-1 bg-transparent text-slate-900 py-3 px-8 outline-none border-none text-[15px] placeholder:text-slate-300 font-semibold ${editingId ? "text-accent" : ""}`}
                 />
-                <button
-                  onClick={sendMessage}
-                  disabled={botStatus !== "idle" || !input.trim()}
-                  className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 shadow-md ${
-                    botStatus !== "idle" || !input.trim() 
-                    ? "bg-slate-50 text-slate-200 cursor-not-allowed" 
-                    : "bg-primary text-white hover:bg-primary/90 hover:scale-[1.02] active:scale-95 shadow-primary/20"
-                  }`}
-                >
-                  <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                  </svg>
-                </button>
+                
+                {botStatus !== "idle" ? (
+                  <button
+                    onClick={forceStop}
+                    className="flex items-center justify-center w-12 h-12 rounded-full bg-red-50 text-red-500 hover:bg-red-100 transition-all duration-300 shadow-md group"
+                    title="Force Stop"
+                  >
+                    <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 pr-2">
+                    {editingId && (
+                      <button
+                        onClick={() => { setEditingId(null); setInput(""); }}
+                        className="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest px-3"
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
+                    <button
+                      onClick={sendMessage}
+                      disabled={!input.trim()}
+                      className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 shadow-md ${
+                        !input.trim() 
+                        ? "bg-slate-50 text-slate-200 cursor-not-allowed" 
+                        : "bg-primary text-white hover:bg-primary/90 hover:scale-[1.02] active:scale-95 shadow-primary/20"
+                      }`}
+                    >
+                      <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
 
             </footer>

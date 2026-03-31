@@ -60,6 +60,8 @@ Status: [Value]
 Tracking: [Value]
 ClickUp: [Value]
 Project: [Value]
+Email: [Value]
+KYC Link: [Value]
 
 --- RAW ANALYSIS & EXTENDED DETAILS ---
 [Value if asking for everything, else N/A]

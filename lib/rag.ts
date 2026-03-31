@@ -18,29 +18,30 @@ export type RetrievalResult = {
   context: string;
   detectedTopic: string | null;
 };
+
 export async function getEmbedding(text: string): Promise<number[]> {
   try {
     const isVercel = !!process.env.VERCEL;
     const openaiKey = process.env.OPENAI_API_KEY;
 
-    // 1. TRY OPENAI (Preferred for production/Vercel)
-    if (openaiKey) {
-      console.log(`[RAG] Using OpenAI for production embedding...`);
-      const openai = new OpenAI({ apiKey: openaiKey });
-      const embedding = await openai.embeddings.create({
-        model: "text-embedding-3-small", // High efficiency + low cost
-        input: text,
-      });
-      return embedding.data[0].embedding;
+    if (openaiKey && openaiKey.startsWith("sk-")) {
+      try {
+        console.log(`[RAG] Attempting OpenAI embedding...`);
+        const openai = new OpenAI({ apiKey: openaiKey });
+        const embedding = await openai.embeddings.create({
+          model: "text-embedding-3-small",
+          input: text,
+        });
+        return embedding.data[0].embedding;
+      } catch (err: any) {
+        console.warn(`[RAG] OpenAI Embedding failed (${err.status || err.message}). Falling back to local...`);
+      }
     }
 
-    // 2. FALLBACK TO OLLAMA (Local default)
     const targetUrl = process.env.EMBEDDING_URL || `${OLLAMA_HOST}/api/embeddings`;
-    
-    // Safety: If on Vercel and targetting 127.0.0.1, we KNOW it will fail.
     if (isVercel && targetUrl.includes("127.0.0.1")) {
-      console.error("[RAG] ERROR: Vercel cannot connect to local Ollama (127.0.0.1). Please provide OPENAI_API_KEY or a public EMBEDDING_URL.");
-      throw new Error("Local Ollama is unreachable from Vercel. Please configure OPENAI_API_KEY in your Vercel Dashboard.");
+      console.error("[RAG] ERROR: Vercel cannot connect to local Ollama (127.0.0.1).");
+      throw new Error("Local Ollama is unreachable from Vercel.");
     }
 
     console.log(`[RAG] Embedding Request to: ${targetUrl}`);
@@ -51,17 +52,14 @@ export async function getEmbedding(text: string): Promise<number[]> {
     });
 
     if (!res.ok) {
-      console.error(`[RAG] Fetch Error (${res.status}): ${res.statusText}`);
       throw new Error(`Embedding service unavailable (${res.status})`);
     }
 
     const data = await res.json();
     const vector = data.embedding || (Array.isArray(data) ? data : (data[0]?.embedding || data[0]));
-    
     if (!vector || !Array.isArray(vector)) {
       throw new Error("No valid vector data returned from API");
     }
-    
     return vector;
   } catch (err: any) {
     console.error(`[RAG] GET_EMBEDDING_EXCEPTION:`, err.message);
@@ -69,235 +67,176 @@ export async function getEmbedding(text: string): Promise<number[]> {
   }
 }
 
-const N8N_FETCH_URL = "https://n8n.heysnaply.com/webhook/fetch-all-data";
 const N8N_SOP_FETCH_URL = "https://n8n.heysnaply.com/webhook/FETCH-SOP";
 
 export async function retrieveContext(query: string): Promise<RetrievalResult> {
   try {
     const queryLower = query.toLowerCase();
+    const words = queryLower.replace(/[?.!,;:]/g, "").split(/\s+/).filter(w => w.length >= 2);
     
     // Keyword Definitions
-    const sopKeywords = ["sop", "protocol", "manual", "guide", "procedure", "steps", "step", "how to", "instruction", "checklist", "policy", "briefing", "workflow", "process", "setup", "optimize", "task", "section"];
-    const personaKeywords = ["persona", "target audience", "demographic", "avatar", "ideal client"];
-    const faceKeywords = ["face", "facial", "hook", "face analysis", "face data"];
-    const bodyKeywords = ["body", "physique", "posture", "body analysis", "body data"];
-    const brollKeywords = ["broll", "b-roll", "b roll", "footage", "tags"];
-    const clientKeywords = ["client", "clients", "brand", "brands", "customer", "account", "project status"];
+    const sopKeywords = ["sop", "SOP", "standard operating procedure", "protocol", "manual", "guide", "procedure", "workflow", "process", "steps", "step", "step-by-step", "instruction", "instructions", "checklist", "policy", "how to", "how-to", "setup", "task", "optimize", "system", "framework", "playbook", "documentation"];
+    const personaKeywords = ["persona", "target audience", "target market", "demographic", "audience", "avatar", "ideal client", "ideal customer", "age", "gender", "location", "income", "job", "occupation", "lifestyle", "interests", "behavior", "pain point", "problem", "challenge", "goal", "desire", "needs", "motivation", "frustration", "niche", "industry", "market", "customer profile", "user profile", "buyer persona"];
+    const faceKeywords = ["face", "facial", "face analysis", "face data", "face_shape", "shape", "outline", "oval", "round", "square", "heart", "diamond", "eyes", "nose", "lips", "jaw", "chin", "forehead", "cheekbones", "skin", "symmetry"];
+    const bodyKeywords = ["body", "physique", "posture", "body analysis", "body data", "ectomorph", "mesomorph", "endomorph", "slim", "athletic", "muscular", "curvy", "lean", "height", "weight"];
+    const brollKeywords = ["broll", "b-roll", "b roll", "footage", "clips", "visuals", "walking", "standing", "sitting", "talking", "typing", "scrolling", "working", "posing", "looking", "smiling", "holding", "aesthetic", "cinematic", "tags"];
+    const clientKeywords = ["client", "clients", "brand", "brands", "customer", "account", "project status", "name", "email", "employee", "staff", "team member", "user", "intern", "active", "salary", "schedule", "tracker", "kyc link", "clickup", "clockify id"];
 
-    // Determine Target Workflow
-    let targetUrl = N8N_FETCH_URL;
+    // 1. ROUTING
+    let targetUrl = "https://n8n.heysnaply.com/webhook/clientschat";
     let requestType = "GENERAL";
 
-    if (sopKeywords.some(kw => queryLower.includes(kw))) {
-      targetUrl = N8N_SOP_FETCH_URL;
-      requestType = "SOP";
-    } else if (personaKeywords.some(kw => queryLower.includes(kw))) {
-      targetUrl = "https://n8n.heysnaply.com/webhook/persona";
-      requestType = "PERSONA";
-    } else if (faceKeywords.some(kw => queryLower.includes(kw))) {
-      targetUrl = "https://n8n.heysnaply.com/webhook/face";
-      requestType = "FACE";
-    } else if (bodyKeywords.some(kw => queryLower.includes(kw))) {
-      targetUrl = "https://n8n.heysnaply.com/webhook/body";
-      requestType = "BODY";
-    } else if (brollKeywords.some(kw => queryLower.includes(kw))) {
-      targetUrl = "https://n8n.heysnaply.com/webhook/broll";
-      requestType = "BROLL";
-    } else if (clientKeywords.some(kw => queryLower.includes(kw))) {
-      targetUrl = "https://n8n.heysnaply.com/webhook/clientschat";
-      requestType = "CLIENT";
-    }
+    if (sopKeywords.some(kw => queryLower.includes(kw))) { targetUrl = N8N_SOP_FETCH_URL; requestType = "SOP"; }
+    else if (personaKeywords.some(kw => queryLower.includes(kw))) { targetUrl = "https://n8n.heysnaply.com/webhook/persona"; requestType = "PERSONA"; }
+    else if (faceKeywords.some(kw => queryLower.includes(kw))) { targetUrl = "https://n8n.heysnaply.com/webhook/face"; requestType = "FACE"; }
+    else if (bodyKeywords.some(kw => queryLower.includes(kw))) { targetUrl = "https://n8n.heysnaply.com/webhook/body"; requestType = "BODY"; }
+    else if (brollKeywords.some(kw => queryLower.includes(kw))) { targetUrl = "https://n8n.heysnaply.com/webhook/broll"; requestType = "BROLL"; }
+    else if (clientKeywords.some(kw => queryLower.includes(kw))) { targetUrl = "https://n8n.heysnaply.com/webhook/clientschat"; requestType = "CLIENT"; }
 
-    console.log(`RAG: Query is ${requestType} related. Routing to: ${targetUrl}`);
+    console.log(`RAG: Query Type: ${requestType} -> Fetching: ${targetUrl}`);
 
-    const res = await fetch(targetUrl);
-    if (!res.ok) throw new Error("n8n data fetch failed");
-    
-    const rootData = await res.json();
-    
-    // Robust parsing for different n8n webhook payload structures
+    // 2. FETCHING
+    const response = await fetch(targetUrl);
+    if (!response.ok) throw new Error("n8n fetch failed");
+    const rootData = await response.json();
+
     let allItems: any[] = [];
-    if (Array.isArray(rootData) && rootData.length > 0 && Array.isArray(rootData[0].data)) {
-        allItems = rootData[0].data;
-    } else if (rootData && Array.isArray(rootData.data)) {
-        allItems = rootData.data;
-    } else if (Array.isArray(rootData)) {
-        allItems = rootData;
-    } else if (rootData && typeof rootData === 'object') {
-        allItems = [rootData];
-    }
-    
-    // Determine context parts based on request type
-    const contextParts: string[] = [];
-    const words = queryLower.split(/\s+/).filter(w => w.length > 2);
-    
-    // Match record against keywords (Improved to handle specific phrases)
-    const isMatch = (record: Record<string, unknown> | SopDocument) => {
-      const target = JSON.stringify(record).toLowerCase();
-      if (words.length === 0) return true;
-      
-      // Check for exact phrase matches (e.g. "Step 6")
-      if (queryLower.includes("step") || queryLower.includes("section")) {
-        const match = words.every(w => target.includes(w));
-        if (match) return true;
-      }
+    if (Array.isArray(rootData)) allItems = rootData;
+    else if (rootData && Array.isArray(rootData.data)) allItems = rootData.data;
+    else if (rootData?.[0]?.data && Array.isArray(rootData[0].data)) allItems = rootData[0].data;
+    else if (rootData && typeof rootData === 'object') allItems = [rootData];
 
-      const normalizedTarget = target.replace(/(.)\1+/g, '$1');
-      const matchCount = words.filter(w => {
-        if (target.includes(w)) return true;
-        const normalizedW = w.replace(/(.)\1+/g, '$1');
-        return normalizedTarget.includes(normalizedW);
-      }).length;
-      return matchCount >= Math.min(words.length, 2);
+    const contextParts: string[] = [];
+
+    // Helper: Weighted Scoring logic
+    const scoreItem = (item: any) => {
+      const itemStr = JSON.stringify(item).toLowerCase();
+      const nameStr = (item.name || item.client || "").toLowerCase();
+      
+      let score = 0;
+      for (const word of words) {
+        // High priority: Name matches
+        if (nameStr.includes(word)) score += 10;
+        // Normal priority: Other field matches
+        else if (itemStr.includes(word)) score += 1;
+      }
+      
+      const metadataScore = (item.face_data ? 1 : 0) + (item.body_data ? 1 : 0) + (item.persona_details ? 1 : 0);
+      return { item, score, metadataScore };
     };
 
-    // 1. PROCESS SOP DATA
-    if (requestType === "SOP") {
-      const matchedSOPs = allItems.filter(isMatch).slice(0, 2); // Extremely strict slice to save LLM tokens!
-      for (const s of matchedSOPs) {
-        const title = s.ai_title || s.title || "SOP Procedure";
-        contextParts.push(`[SOP DOCUMENT: ${title}]\n${s.content}`);
-      }
-      console.log(`RAG: Injected ${matchedSOPs.length} SOP chunks from dedicated workflow.`);
-    }
-
-    // 2. PROCESS SPECIFIC DATA TYPES
-    if (["PERSONA", "FACE", "BODY", "BROLL"].includes(requestType)) {
-      const matched = allItems.filter(isMatch).slice(0, 15);
-      for (const item of matched) {
-         contextParts.push(`[${requestType} DATA]:\n${JSON.stringify(item, null, 2)}`);
-      }
-      console.log(`RAG: Injected ${matched.length} ${requestType} records`);
-    }
-
-    // 3. PROCESS CLIENT DATA (If general request, or explicit client request)
+    // 3. PROCESSING - CLIENTS & GENERAL
     if (requestType === "CLIENT" || requestType === "GENERAL") {
-      const matchedClients = allItems
-        .filter(isMatch)
-        .sort((a: any, b: any) => {
-          // Prioritize clients with analysis data
-          const aScore = (a.face_data ? 1 : 0) + (a.body_data ? 1 : 0) + (a.persona_details ? 1 : 0);
-          const bScore = (b.face_data ? 1 : 0) + (b.body_data ? 1 : 0) + (b.persona_details ? 1 : 0);
-          return bScore - aScore;
-        })
+      const scoredItems = allItems.map(scoreItem);
+      const filtered = scoredItems
+        .filter(entry => entry.score > 0)
+        .sort((a, b) => b.score - a.score || b.metadataScore - a.metadataScore)
         .slice(0, 15);
 
-      for (const c of matchedClients) {
-        const clientName = c.name || c.client || "Unknown Client";
-        let clientContext = `[CLIENT DATA]:\nName: ${clientName}\nStatus: ${c.isActive ? 'Active' : 'Inactive'}\nTracking: ${c.tracker || 'N/A'}`;
-        
-        if (c.clickup_id) clientContext += `\nClickUp: ${c.clickup_id}`;
-        if (c.vps) clientContext += `\nProject: ${c.vps}`;
-
-        // Append Nested Details if they exist
-        if (c.persona_details) clientContext += `\nPERSONA: ${c.persona_details}`;
-        if (c.face_data?.face_analysis) clientContext += `\nFACE ANALYSIS: ${c.face_data.face_analysis}`;
-        if (c.body_data?.body_analysis) clientContext += `\nBODY ANALYSIS: ${c.body_data.body_analysis}`;
-        
-        if (Array.isArray(c.broll_tags) && c.broll_tags.length > 0) {
-          const tags = c.broll_tags.map((b: Record<string, unknown>) => b.tags).join(", ");
-          clientContext += `\nB-ROLL TAGS: ${tags}`;
-        }
-
-        if (Array.isArray(c.sop_docs) && c.sop_docs.length > 0) {
-          const docs = c.sop_docs.map((s: Record<string, unknown>) => s.content).join("\n");
-          clientContext += `\nSOP DOCUMENTS:\n${docs}`;
-        }
-
+      console.log(`RAG: Filtered Top ${filtered.length} matching clients.`);
+      for (const { item: c } of filtered) {
+        let clientContext = `[CLIENT]: ${c.name || "N/A"} | Status: ${c.isActive ? 'Active' : 'Inactive'}`;
+        if (c.email || c.contact_email) clientContext += ` | Email: ${c.email || c.contact_email}`;
+        if (c.clickup_id) clientContext += ` | ClickUp: ${c.clickup_id}`;
+        if (c.kyc_link) clientContext += ` | KYC Link: ${c.kyc_link}`;
+        if (c.vps) clientContext += ` | Project: ${c.vps}`;
+        if (c.tracker) clientContext += ` | Tracker: ${c.tracker}`;
+        if (c.persona_details && (queryLower.includes("persona") || queryLower.includes("audience"))) clientContext += `\n- PERSONA: ${c.persona_details}`;
+        if (c.face_data?.face_analysis && (queryLower.includes("face") || queryLower.includes("look"))) clientContext += `\n- FACE: ${c.face_data.face_analysis}`;
         contextParts.push(clientContext);
       }
-      console.log(`RAG: Found ${matchedClients.length} matching client profiles.`);
-    }
+    } 
+    
+    if (requestType === "SOP" || requestType === "GENERAL") {
+      // 3b. SOURCE EXPANSION STRATEGY (Send Whole PDF based on best match)
+      const scoredItems = allItems.map(item => {
+        const title = (item.ai_title || item.title || item.source_name || "").toLowerCase();
+        const content = (item.content || "").toLowerCase();
+        let score = 0;
+        for (const word of words) {
+          if (title.includes(word)) score += 20;
+          if (content.includes(word)) score += 5;
+        }
+        return { item, score };
+      });
 
-    // 2. SEARCH SOP DOCUMENTS (Vector Search Fallback)
-    try {
-      let supabase = createInternalClient();
-      const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
-      const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
-      if (docployUrl && docployKey) {
-         supabase = createDocployClient(docployUrl, docployKey);
-      }
+      const topMatch = scoredItems
+        .filter(e => e.score > 0)
+        .sort((a, b) => b.score - a.score)[0];
 
-      console.log("RAG: Performing vector search for SOPs...");
-      
-      // ONLY RUN VECTOR SEARCH IF NO OTHER SOP CONTEXT WAS FOUND! 
-      // Massive token savings for the LLM!
-      if (requestType !== "SOP" || contextParts.length === 0) {
-        const queryEmbedding = await getEmbedding(query);
+      if (topMatch && (requestType === "SOP" || topMatch.score > 25)) {
+        const bestSource = topMatch.item.source_name || topMatch.item.title;
+        const allSegments = allItems.filter(i => (i.source_name === bestSource) || (i.title === bestSource));
+
+        console.log(`RAG: Found strong SOP match in "${bestSource}". Expanding to ${allSegments.length} segments.`);
         
-        const { data: matchedSOPs, error: rpcError } = await supabase.rpc('match_sop', {
-          query_embedding: queryEmbedding,
-          match_threshold: 0.35,
-          match_count: 2  // SLICE DOWN TO 2 TO SAVE TOKENS
-        });
-
-        if (rpcError) throw rpcError;
-
-        if (matchedSOPs && matchedSOPs.length > 0) {
-          matchedSOPs.forEach((m: any) => {
-             const title = m.ai_title || m.source_name || "SOP Procedure";
-             contextParts.push(`[SOP DOCUMENT: ${title}]\n${m.content}`);
-          });
-          console.log(`RAG: Injected ${matchedSOPs.length} precise chunks from Vector Search.`);
-        }
-      }
-    } catch (e) {
-      console.error("Vector retrieval failed, trying keyword fallback:", e);
-      // Keyword fallback logic (old simplified version)
-      try {
-        if (requestType !== "SOP" || contextParts.length === 0) {
-          let supabase = createInternalClient();
-          const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL || process.env.DOCPLOY_SUPABASE_URL;
-          const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY || process.env.DOCPLOY_SERVICE_ROLE_KEY;
-          if (docployUrl && docployKey) {
-             supabase = createDocployClient(docployUrl, docployKey);
-          }
-
-          const { data: simpleSearch } = await supabase
-            .from("SOP_VIA")
-            .select("content, source_name")
-            .ilike("content", `%${query.replace(/\s+/g, '%')}%`)
-            .limit(2);  // SLICE DOWN TO 2 TO SAVE TOKENS
+        const combinedContent = allSegments
+          .map(s => s.content || s.text || JSON.stringify(s))
+          .join("\n\n");
           
-          if (simpleSearch) {
-            contextParts.push(...simpleSearch.map(s => `[SOP CONTENT]: ${s.content}`));
-          }
-        }
-      } catch (innerE) {
-        console.error("Keyword fallback also failed:", innerE);
+        contextParts.push(`[FULL DOCUMENT: ${bestSource?.toUpperCase() || "Protocol"}]\n${combinedContent}`);
+        
+        // If we found a very strong SOP match, we don't need general client data cluttering if the user asked an SOP question
+        if (requestType === "SOP") return { context: contextParts.join("\n\n"), detectedTopic: "SOP" };
       }
     }
 
-    // 4. FETCH ASSISTANT/TEAM DATA (Always check team context)
+    if (["PERSONA", "FACE", "BODY", "BROLL"].includes(requestType)) {
+      // 3c. PROCESSING - OTHER DATA (General Filter)
+      const matched = allItems.map(scoreItem)
+        .filter(e => e.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+      for (const { item } of matched) {
+        contextParts.push(`[${requestType} DATA]:\n${JSON.stringify(item, null, 2)}`);
+      }
+    }
+
+    // 4. VECTOR SOP FALLBACK (Search against Supabase Docploy)
+    if ((requestType === "GENERAL" || requestType === "SOP") && contextParts.length < 5) {
+      try {
+        const docployUrl = process.env.NEXT_PUBLIC_DOCPLOY_SUPABASE_URL;
+        const docployKey = process.env.NEXT_PUBLIC_DOCPLOY_ANON_KEY;
+        if (docployUrl && docployKey) {
+          const supabase = createDocployClient(docployUrl, docployKey);
+          const queryEmbedding = await getEmbedding(query);
+          const { data: vectorMatch } = await supabase.rpc('match_sop', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.35,
+            match_count: 2
+          });
+          if (vectorMatch) {
+            vectorMatch.forEach((m: any) => contextParts.push(`[SOP DOCUMENT: ${m.ai_title || "Procedure"}]\n${m.content}`));
+          }
+        }
+      } catch (e) { console.warn("Vector search skipped:", (e as Error).message); }
+    }
+
+    // 5. TEAM DATA CHECK
     try {
       const supabase = createInternalClient();
-      const { data: assistantData } = await supabase
-        .from("assistant")
-        .select("*")
-        .limit(100);
-        
-      if (assistantData && Array.isArray(assistantData)) {
-        const matchedAssistants = assistantData.filter(isMatch).slice(0, 3);
-        for (const a of matchedAssistants) {
-          contextParts.push(`[TEAM MEMBER]:\nName: ${a.name}\nEmail: ${a.email}\nStatus: ${a.is_active ? 'Active' : 'Inactive'}\nType: ${a.employment_type || 'N/A'}\nClickUp ID: ${a.clickup_id || 'N/A'}\nDaily Schedule: ${a.daily_schedule_sheet || 'N/A'}\nSalary Sheet: ${a.salary_sheet || 'N/A'}`);
-        }
-        if (matchedAssistants.length > 0) {
-          console.log(`RAG: Found ${matchedAssistants.length} matching assistant records.`);
+      const { data: team } = await supabase.from("assistant").select("*").limit(50);
+      if (team) {
+        const matchedTeam = team
+          .map(scoreItem)
+          .filter(e => e.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+          .map(e => e.item);
+
+        for (const t of matchedTeam) {
+          contextParts.push(`[TEAM MEMBER]: ${t.name}\nEmail: ${t.email}\nDepartment: ${t.department || 'N/A'}`);
         }
       }
-    } catch (e) {
-      console.error("Assistant Fetch Error:", e);
-    }
+    } catch (e) {}
 
-    const context = contextParts.join("\n\n---\n\n");
     return { 
-      context: context || "NO_CONTEXT_FOUND",
-      detectedTopic: words[0] || null
+      context: contextParts.join("\n\n---\n\n") || "NO_CONTEXT_FOUND",
+      detectedTopic: requestType 
     };
-
   } catch (err) {
-    console.error("n8n RAG ERROR:", err);
-    return { context: "NO_CONTEXT_FOUND", detectedTopic: null };
+    console.error("RAG Error:", err);
+    return { context: "RAG_ERROR", detectedTopic: null };
   }
 }
 
@@ -305,49 +244,24 @@ export function chunkText(text: string, size = 1000): string[] {
   const chunks: string[] = [];
   const words = text.split(/\s+/);
   let current = "";
-
   for (const word of words) {
-    if ((current + word).length > size) {
-      chunks.push(current.trim());
-      current = word + " ";
-    } else {
-      current += word + " ";
-    }
+    if ((current + word).length > size) { chunks.push(current.trim()); current = word + " "; }
+    else { current += word + " "; }
   }
   if (current) chunks.push(current.trim());
   return chunks;
 }
 
-/**
- * Generate a punchy title from text content.
- */
 export async function generateTitle(text: string): Promise<string> {
   try {
     const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey) throw new Error("Missing API Key");
-
+    if (!openaiKey) throw new Error();
     const openai = new OpenAI({ apiKey: openaiKey });
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "Summarize the text into a functional, professional title (max 5 words). Examples: 'Output in Task History', 'PDF Rebranding', 'SOP: Meta Ad Creation'. Return ONLY the title text without quotes or punctuation."
-        },
-        {
-          role: "user",
-          content: text.slice(0, 3000)
-        }
-      ],
-      max_tokens: 20
+      messages: [{ role: "system", content: "Short professional title (max 5 words). No punctuation." }, { role: "user", content: text.slice(0, 3000) }],
+      max_tokens: 15
     });
-
-    return response.choices[0].message.content?.replace(/["']/g, "").trim() || "Vectorized Protocol";
-  } catch (err: any) {
-    console.warn(`[RAG] Title generation failed: ${err.message}. Using extraction fallback.`);
-    // FALLBACK: Extract the first meaningful line (e.g., heading or first sentence)
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-    const firstLine = lines[0]?.slice(0, 50).replace(/[#*•○[\]]/g, "").trim();
-    return firstLine || "New SOP Protocol";
-  }
+    return response.choices[0].message.content?.trim() || "SOP Protocol";
+  } catch { return text.split('\n')[0]?.slice(0, 40) || "New SOP"; }
 }
