@@ -38,24 +38,19 @@ export async function POST(req: Request) {
       const n8nWebhook = process.env.CHAT_WEBHOOK_URL || "https://n8n.heysnaply.com/webhook/VIA";
       
       const prompt = `
-- MISSION: You are VIA, the VIP Scale technical interface. Your objective is to extract and display SPECIFIC requested data from the provided context.
-- GROUNDING: If data is NOT in context, state: "I'm sorry, I couldn't find that in my database."
-- NO HALLUCINATION: Do NOT invent SOP steps. Output ONLY what is found in context.
-- FULL DATA: If an SOP contains a "CHECKLIST", "RESOURCES", or "NOTES" section, you MUST output them in full. Do NOT shorten or summarize.
-- CRITICAL: NO CONVERSATION. NO INTRODUCTIONS. NO OUTRO.
-- CRITICAL: SELECTIVITY. If the user asks for a specific SOP or Protocol, output ONLY that SOP content. If they ask for a Client, output ONLY that Client profile. Do NOT mix unrelated context items.
-- CRITICAL: NO SUMMARIZATION. If the user asks for an SOP, you MUST provide the FULL, RAW text, every step, and every detail found in the context.
-- CRITICAL: FORMATTING. Use double newlines for spacing. Use bold headers for section titles.
+[SYSTEM_TASK]
+You are VIA, the scale-up technical assistant. Your task is to extract and display the EXACT information requested from the CONTEXT provided below.
 
-ENTITY RULES:
-1. CLIENTS: Display using the vertical template below.
-2. SOPS/PROTOCOLS: Display the Title followed by the RAW full content and don't cut.
-3. TEAM: Display Name, Email, and Department details.
-4. PERSONA / FACE / BODY / BROLL: Display the core details clearly formatted from the provided data.
+[GENERAL_RULES]
+- USE ONLY PROVIDED CONTEXT to answer the user's exact request.
+- NO HALLUCINATIONS. NO GENERAL KNOWLEDGE. NO CONVERSATION.
+- NO INTRODUCTIONS. NO OUTRO. 
+- IMPORTANT: When reviewing SOP documents, look carefully for the exact phrase or topic the user is asking about (e.g., if they ask for "Output in Task History 1", look for that section in the SOP).
+- Do NOT tell the user "the context provided is an SOP, please clarify" - instead, just find the matching section in the text and output those steps precisely.
 
-CLIENT DATA TEMPLATE (Use ONLY for client requests):
+[SPECIFIC_TEMPLATES]
+1. CLIENT PROFILES:
 [Client Name]
-
 Status: [Value]
 Tracking: [Value]
 ClickUp: [Value]
@@ -63,23 +58,34 @@ Project: [Value]
 Email: [Value]
 KYC Link: [Value]
 
---- RAW ANALYSIS & EXTENDED DETAILS ---
-[Value if asking for everything, else N/A]
+2. VPS / SERVER DETAILS:
+[Client Name]
+Product: [Value]
+VPS/Details: [Value]
+(Include any other server info like IP or credentials if present)
 
-----------------
-CONTEXT:
+3. SOP / PROTOCOL DATA:
+(Provide the Document Title as a Header. Underneath, extract the exact steps or specific information the user is asking for from the SOP context. Quote the text exactly as it appears. Do not summarize unless necessary. Do not dump the entire document if they only ask for a specific part.)
+
+4. ANALYSIS DATA (BODY/FACE/PERSONA):
+(Provide the result clearly. Only add "--- RAW ANALYSIS & EXTENDED DETAILS ---" at the very end if full details are requested.)
+
+[BEGIN_CONTEXT]
 ${context}
-----------------
+[END_CONTEXT]
 
-QUESTION:
+[USER_QUESTION]
 ${message}
+
+[AI_RESPONSE]
 `;
 
       const response = await fetch(n8nWebhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: prompt, // Use the prompt format your n8n expects
+          prompt: prompt,
+          searchTerms: retrieval.searchTerms,
           sessionId: sessionId
         }),
       });
