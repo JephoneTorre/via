@@ -81,17 +81,28 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
     const isPersona = personaKeywords.some(kw => queryLower.includes(kw));
     const isBody = bodyKeywords.some(kw => queryLower.includes(kw));
     const isFace = faceKeywords.some(kw => queryLower.includes(kw));
-    const isClient = clientKeywords.some(kw => queryLower.includes(kw));
-    const isSOP = sopKeywords.some(kw => queryLower.includes(kw));
+    const isCaryn = queryLower.includes("caryn") || queryLower.includes("meininger");
+    const isNicola = queryLower.includes("nicola") || queryLower.includes("ducharme");
+    const isChad = queryLower.includes("chad") || queryLower.includes("gibson");
+    const isCharmaine = queryLower.includes("charmaine") || queryLower.includes("schembri");
+    const isDanielle = queryLower.includes("danielle") || queryLower.includes("french");
 
-    if (isBroll) requestType = "BROLL";
+    if (isCaryn) requestType = "Caryn Meininger" as any;
+    else if (isNicola) requestType = "Dr. Nicola Ducharme" as any;
+    else if (isChad) requestType = "Chad Gibson" as any;
+    else if (isCharmaine) requestType = "Charmaine Schembri" as any;
+    else if (isDanielle) requestType = "Danielle French" as any;
+    else if (isBroll) requestType = "BROLL";
     else if (isVPS) requestType = "VPS";
     else if (isPersona) requestType = "PERSONA";
     else if (isBody) requestType = "BODY";
     else if (isFace) requestType = "FACE";
     else if (isClient) requestType = "CLIENT";
     else if (isSOP) requestType = "SOP";
-    else requestType = "CLIENT"; // Default to CLIENT for name-based searches if no SOP markers found
+    else requestType = "CLIENT"; 
+
+    const customTableNames = ["Caryn Meininger", "Chad Gibson", "Charmaine Schembri", "Danielle French", "Dr. Nicola Ducharme"];
+    const isCustomTable = customTableNames.includes(requestType as string);
 
     const cleanQuery = queryLower.replace(/[?.!,;:]/g, " ").replace(/\s+/g, " ").trim();
     const searchTerms = cleanQuery.replace(/\bsop\b/g, " ").replace(/\s+/g, " ").trim();
@@ -111,7 +122,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
         const tableName = 
           requestType === "BROLL" ? "broll_tags" : 
           requestType === "CLIENT" ? "clients" :
-          (requestType === "VPS" || requestType === "SOP") ? requestType : 
+          (requestType === "VPS" || requestType === "SOP" || isCustomTable) ? requestType : 
           requestType.toLowerCase();
         
         console.log(`RAG: Fetching ${requestType} data from local table: ${tableName}`);
@@ -120,7 +131,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
         // Optimization: Try to find a specific client name in the query to filter the SQL query
         const potentialName = meaningfulWords.find(w => w.length > 3 && !vpsKeywords.includes(w) && !faceKeywords.includes(w) && !bodyKeywords.includes(w) && !personaKeywords.includes(w) && !brollKeywords.includes(w));
         
-        if (potentialName && requestType !== "SOP" && requestType !== "BROLL") {
+        if (potentialName && requestType !== "SOP" && requestType !== "BROLL" && !isCustomTable) {
           console.log(`RAG: Targeted search for "${potentialName}" in ${tableName}...`);
           
           const { data: filtered, error: filterError } = await supabase.from(tableName)
@@ -275,10 +286,11 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
       return { item, score };
     };
 
+    const maxResults = isCustomTable ? 40 : 10;
     const generalMatches = allItems.map(scoreGeneral)
-      .filter(e => e.score > 0)
+      .filter(e => e.score > 0 || isCustomTable)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
+      .slice(0, maxResults);
 
     if (generalMatches.length > 0) {
       console.log(`RAG: Found ${generalMatches.length} matches in local table. Top score: ${generalMatches[0].score}`);
@@ -303,17 +315,15 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
         const vpsInfo = item.vps || item.details || item.content || "N/A";
         const product = item.product || "N/A";
         contextParts.push(`[VPS DETAILS]: ${title}\nProduct: ${product}\nVPS/Details: ${vpsInfo}\nRaw Data: ${JSON.stringify(item)}`);
-      } else if (["PERSONA", "BODY", "FACE"].includes(requestType)) {
-        const typeLabel = requestType.charAt(0) + requestType.slice(1).toLowerCase();
-        const content = item[`${requestType.toLowerCase()}_analysis`] || item.content || item.details || item.persona_details || JSON.stringify(item);
+      } else if (["PERSONA", "BODY", "FACE"].includes(requestType as any)) {
+        const typeLabel = requestType.charAt(0) + (requestType as string).slice(1).toLowerCase();
+        const content = item[`${(requestType as string).toLowerCase()}_analysis`] || item.content || item.details || item.persona_details || JSON.stringify(item);
         contextParts.push(`[${typeLabel} Analysis]: ${item.name || item.client || "Profile"}\n${content}`);
-      } else if (item.face_analysis || item.body_analysis || item.persona_details) { 
-        // Legacy fallback for mixed analysis data
-        let analysisText = `[ANALYSIS]: ${item.name || item.client || "Details"}\n\n`;
-        if (item.face_analysis) analysisText += `Face: ${item.face_analysis}\n`;
-        if (item.body_analysis) analysisText += `Body: ${item.body_analysis}\n`;
-        if (item.persona_details) analysisText += `Persona: ${item.persona_details}\n`;
-        contextParts.push(analysisText);
+      } else {
+        // Generic formatter for custom tables (like Caryn Meininger) - Compacted for speed
+        const key = item["Client Information"] || item.name || item.title || item.client || "Data Entry";
+        const val = item["Details"] || item.content || item.value || JSON.stringify(item);
+        contextParts.push(`[${requestType}]: ${key} -> ${val}`);
       }
     }
 
