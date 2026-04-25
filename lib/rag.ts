@@ -86,6 +86,8 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
     const isChad = queryLower.includes("chad") || queryLower.includes("gibson");
     const isCharmaine = queryLower.includes("charmaine") || queryLower.includes("schembri");
     const isDanielle = queryLower.includes("danielle") || queryLower.includes("french");
+    const isClient = clientKeywords.some(kw => queryLower.includes(kw));
+    const isSOP = sopKeywords.some(kw => queryLower.includes(kw));
 
     if (isCaryn) requestType = "Caryn Meininger" as any;
     else if (isNicola) requestType = "Dr. Nicola Ducharme" as any;
