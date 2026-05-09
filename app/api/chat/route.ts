@@ -67,8 +67,8 @@ VPS/Details: [Value]
 3. SOP / PROTOCOL DATA:
 (Provide the Document Title as a Header. Underneath, extract the exact steps or specific information the user is asking for from the SOP context. Quote the text exactly as it appears. Do not summarize unless necessary. Do not dump the entire document if they only ask for a specific part.)
 
-4. ANALYSIS DATA (BODY/FACE/PERSONA):
-(Provide the result clearly. Only add "--- RAW ANALYSIS & EXTENDED DETAILS ---" at the very end if full details are requested.)
+5. CUSTOM DATA / OTHER:
+(If the context is from a custom table like "Chad Gibson", provide the requested specific information directly. Do NOT use the Client Profile template unless specifically asked for a full profile. Output the specific data point requested, e.g., "Branding Color: Blue".)
 
 [BEGIN_CONTEXT]
 ${context}
@@ -78,6 +78,7 @@ ${context}
 ${message}
 
 [AI_RESPONSE]
+(If the context above is "NO_CONTEXT_FOUND", simply state that you do not have that information in your knowledge base. Otherwise, provide the specific answer based on the context.)
 `;
 
       const response = await fetch(n8nWebhook, {

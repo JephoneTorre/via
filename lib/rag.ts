@@ -83,7 +83,7 @@ export async function retrieveContext(query: string): Promise<RetrievalResult> {
     const isFace = faceKeywords.some(kw => queryLower.includes(kw));
     const isCaryn = queryLower.includes("caryn") || queryLower.includes("meininger");
     const isNicola = queryLower.includes("nicola") || queryLower.includes("ducharme");
-    const isChad = queryLower.includes("chad") || queryLower.includes("gibson");
+    const isChad = queryLower.includes("chad") || queryLower.includes("gibson") || queryLower.includes("chadgibson");
     const isCharmaine = queryLower.includes("charmaine") || queryLower.includes("schembri");
     const isDanielle = queryLower.includes("danielle") || queryLower.includes("french");
     const isClient = clientKeywords.some(kw => queryLower.includes(kw));
